@@ -147,3 +147,65 @@ def test_roles_and_permissions(client):
     perms_res = client.get("/api/v1/admin/permissions", headers=headers)
     assert perms_res.status_code == 200
     assert "RM" in perms_res.json()
+
+def test_admin_user_crud_operations(client):
+    login_res = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminpass"})
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Create User
+    payload = {
+        "username": "new_manager",
+        "email": "new_manager@crm.com",
+        "password": "managerpassword",
+        "role": "BRANCH_MANAGER",
+        "team_id": 1
+    }
+    res = client.post("/api/v1/admin/users", json=payload, headers=headers)
+    assert res.status_code == 200
+    new_user = res.json()
+    assert new_user["username"] == "new_manager"
+    assert new_user["role"] == "BRANCH_MANAGER"
+    assert new_user["team_id"] == 1
+
+    # 2. Update User (PATCH)
+    update_payload = {
+        "username": "updated_manager",
+        "is_active": False
+    }
+    res_patch = client.patch(f"/api/v1/admin/users/{new_user['id']}", json=update_payload, headers=headers)
+    assert res_patch.status_code == 200
+    updated_user = res_patch.json()
+    assert updated_user["username"] == "updated_manager"
+    assert updated_user["is_active"] is False
+
+    # 3. Update User Role
+    res_role = client.patch(f"/api/v1/admin/users/{new_user['id']}/role", json={"role": "REGIONAL_HEAD"}, headers=headers)
+    assert res_role.status_code == 200
+    role_user = res_role.json()
+    assert role_user["role"] == "REGIONAL_HEAD"
+
+    # 4. Non-admin create user should be blocked
+    rm_login = client.post("/api/v1/auth/login", json={"username": "rm_alice", "password": "alicepass"})
+    rm_token = rm_login.json()["access_token"]
+    rm_headers = {"Authorization": f"Bearer {rm_token}"}
+    res_blocked = client.post("/api/v1/admin/users", json=payload, headers=rm_headers)
+    assert res_blocked.status_code == 403
+
+def test_admin_team_crud_operations(client):
+    login_res = client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminpass"})
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Create Team
+    res = client.post("/api/v1/admin/teams", json={"name": "New Team C", "manager_id": 2}, headers=headers)
+    assert res.status_code == 200
+    team = res.json()
+    assert team["name"] == "New Team C"
+    assert team["manager_id"] == 2
+
+    # 2. Update Team
+    res_patch = client.patch(f"/api/v1/admin/teams/{team['id']}", json={"name": "Updated Team C"}, headers=headers)
+    assert res_patch.status_code == 200
+    assert res_patch.json()["name"] == "Updated Team C"
+
