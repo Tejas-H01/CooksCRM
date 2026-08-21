@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useEventContext } from '../context/EventContext';
-import { useToast } from '../context/ToastContext';
+import { apiService } from '../services/api';
 import { 
   ResponsiveContainer, 
   BarChart, 
@@ -9,8 +9,6 @@ import {
   YAxis, 
   Tooltip, 
   CartesianGrid,
-  PieChart as RechartsPie,
-  Pie,
   Cell
 } from 'recharts';
 import { 
@@ -22,431 +20,334 @@ import {
   MapPin, 
   Users, 
   CheckCircle2, 
-  ArrowUpRight, 
-  ArrowDownRight, 
   ShieldAlert, 
   Zap,
   ChevronRight,
-  Filter,
   BarChart3,
-  CheckSquare,
-  PieChart,
-  Activity,
-  Send,
-  MessageSquare,
-  Sparkles,
-  Info
+  FileCheck,
+  Briefcase,
+  XCircle,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 
+const fmt = (val, divisor = 100000, decimals = 1) => {
+  if (val === null || val === undefined) return '--';
+  const num = parseFloat(val);
+  if (isNaN(num)) return '--';
+  return `\u20b9${(num / divisor).toFixed(decimals)}L`;
+};
+
 export const RegionalDashboard = () => {
-  const { branches, systemAlerts, eventLog, triggerEvent, regionalPerformance } = useEventContext();
-  const { showToast } = useToast();
+  const { regionalDashboard, resolveRegionalAction, currentUser, eventLog } = useEventContext();
 
-  const [timePeriod, setTimePeriod] = useState('month'); // 'today' | 'week' | 'month'
-  const [sortField, setSortField] = useState('achievement'); // 'achievement' | 'runRate' | 'conversion' | 'sla'
-  const [selectedBranchDrill, setSelectedBranchDrill] = useState(null);
-  const [actionNotes, setActionNotes] = useState({});
+  const [sortField, setSortField] = useState('achievement'); // 'achievement' | 'pipeline' | 'sla'
+  const [selectedBranchId, setSelectedBranchId] = useState(null);
+  const [branchDetail, setBranchDetail] = useState(null);
+  const [isLoadingBranch, setIsLoadingBranch] = useState(false);
 
-  // Mock regional high-value teams / branches dataset
-  const [teamsData, setTeamsData] = useState([
-    {
-      id: "branch-west",
-      name: "West Team / Mumbai Central",
-      manager: "Anita Verma",
-      target: 35000000, // ₹3.5 Cr
-      achieved: 31000000, // ₹3.1 Cr
-      achievedPct: 88.5,
-      runRate: 91,
-      conversion: 24.2,
-      pipeline: 18000000,
-      overdue: 3,
-      slaBreaches: 2,
-      riskLevel: "Low",
-      riskColor: "#01c58a",
-      rms: [
-        { name: "Rahul Sharma", target: "₹50L", achieved: "₹48L", conv: "26%", status: "On Track" },
-        { name: "Neha Iyer", target: "₹60L", achieved: "₹64L", conv: "28%", status: "Top Performer" }
-      ]
-    },
-    {
-      id: "branch-north",
-      name: "North Team / Delhi West",
-      manager: "Karan Malhotra",
-      target: 30000000, // ₹3.0 Cr
-      achieved: 26000000, // ₹2.6 Cr
-      achievedPct: 86.6,
-      runRate: 88,
-      conversion: 22.0,
-      pipeline: 14000000,
-      overdue: 4,
-      slaBreaches: 2,
-      riskLevel: "Low",
-      riskColor: "#01c58a",
-      rms: [
-        { name: "Vikas Gupta", target: "₹45L", achieved: "₹42L", conv: "23%", status: "On Track" },
-        { name: "Pooja Singh", target: "₹50L", achieved: "₹49L", conv: "24%", status: "On Track" }
-      ]
-    },
-    {
-      id: "branch-east",
-      name: "East Team / Kolkata Central",
-      manager: "Subhash Roy",
-      target: 30000000, // ₹3.0 Cr
-      achieved: 23000000, // ₹2.3 Cr
-      achievedPct: 76.6,
-      runRate: 82,
-      conversion: 19.5,
-      pipeline: 11000000,
-      overdue: 9,
-      slaBreaches: 5,
-      riskLevel: "Medium",
-      riskColor: "#fca004",
-      rms: [
-        { name: "Amitav Ghosh", target: "₹40L", achieved: "₹30L", conv: "18%", status: "At Risk" },
-        { name: "Rina Das", target: "₹45L", achieved: "₹38L", conv: "20%", status: "On Track" }
-      ]
-    },
-    {
-      id: "branch-south",
-      name: "South Team / Bangalore South",
-      manager: "Priya Reddy",
-      target: 30000000, // ₹3.0 Cr
-      achieved: 18000000, // ₹1.8 Cr
-      achievedPct: 60.0,
-      runRate: 75,
-      conversion: 14.2,
-      pipeline: 9000000,
-      overdue: 14,
-      slaBreaches: 8,
-      riskLevel: "High",
-      riskColor: "#f1526f",
-      rms: [
-        { name: "Siddharth Nair", target: "₹50L", achieved: "₹28L", conv: "13%", status: "Action Required" },
-        { name: "Kavita Rao", target: "₹45L", achieved: "₹26L", conv: "15%", status: "Action Required" }
-      ]
+  // Action Resolution Modal
+  const [resolveTarget, setResolveTarget] = useState(null);
+  const [resolutionNotes, setResolutionNotes] = useState('');
+  const [isSubmittingResolve, setIsSubmittingResolve] = useState(false);
+
+  const openBranchDetail = async (branchId) => {
+    setSelectedBranchId(branchId);
+    setIsLoadingBranch(true);
+    try {
+      const data = await apiService.fetchRegionalBranchDetail(branchId);
+      setBranchDetail(data);
+    } catch (err) {
+      console.error("Failed to fetch branch detail:", err);
+      setBranchDetail(null);
+    } finally {
+      setIsLoadingBranch(false);
     }
-  ]);
+  };
 
-  useEffect(() => {
-    if (Array.isArray(regionalPerformance) && regionalPerformance.length > 0) {
-      const mapped = regionalPerformance.map(p => {
-        const branchObj = branches.find(b => b.id === p.team_id);
-        return {
-          id: p.team_id,
-          name: p.team_name,
-          manager: branchObj?.manager_name || "Anita Verma",
-          target: p.team_target,
-          achieved: p.team_achievement,
-          achievedPct: p.team_achievement_percentage,
-          runRate: p.expected_run_rate,
-          conversion: p.average_conversion,
-          pipeline: p.total_pipeline,
-          overdue: p.overdue_follow_ups,
-          slaBreaches: p.sla_breach_count,
-          riskLevel: p.team_achievement_percentage >= p.expected_run_rate ? "Low" : "High",
-          riskColor: p.team_achievement_percentage >= p.expected_run_rate ? "#01c58a" : "#f1526f",
-          rms: p.rm_rankings.map(r => ({
-            name: r.rm_name,
-            target: `₹${(p.team_target / (p.rm_rankings.length || 1) / 100000).toFixed(0)}L`,
-            achieved: `₹${(r.pipeline_value / 100000).toFixed(0)}L`,
-            conv: `${r.conversion_rate.toFixed(1)}%`,
-            status: r.achievement_percentage >= p.expected_run_rate ? "On Track" : "At Risk"
-          }))
-        };
-      });
-      setTeamsData(mapped);
+  const handleConfirmResolve = async (e) => {
+    e.preventDefault();
+    if (!resolveTarget) return;
+    setIsSubmittingResolve(true);
+    try {
+      await resolveRegionalAction(resolveTarget.id, resolutionNotes);
+      setResolveTarget(null);
+      setResolutionNotes('');
+    } catch (err) {
+      console.error("Regional action resolution failed:", err);
+    } finally {
+      setIsSubmittingResolve(false);
     }
-  }, [regionalPerformance, branches]);
+  };
 
-  // High Value Opportunities across region
-  const [opportunities, setOpportunities] = useState([
-    {
-      id: "opp-1",
-      title: "₹85L Wealth Mandate",
-      customer: "ABC Corp Ltd",
-      team: "South Team",
-      manager: "Priya Reddy",
-      rm: "Siddharth Nair",
-      value: 8500000,
-      intent: "High (92%)",
-      status: "No follow-up for 3 days",
-      risk: "HIGH",
-      riskColor: "#f1526f"
-    },
-    {
-      id: "opp-2",
-      title: "₹50L Equity Mutual Fund Pay-in",
-      customer: "Apex Logistics",
-      team: "East Team",
-      manager: "Subhash Roy",
-      rm: "Amitav Ghosh",
-      value: 5000000,
-      intent: "High (88%)",
-      status: "Verification Pending",
-      risk: "MEDIUM",
-      riskColor: "#fca004"
-    },
-    {
-      id: "opp-3",
-      title: "₹40L Treasury Bond Investment",
-      customer: "Zenith Enterprises",
-      team: "West Team",
-      manager: "Anita Verma",
-      rm: "Rahul Sharma",
-      value: 4000000,
-      intent: "Very High (95%)",
-      status: "Proposal Sent",
-      risk: "LOW",
-      riskColor: "#01c58a"
-    }
-  ]);
-
-  // Regional Action Center items
-  const [regionalActions, setRegionalActions] = useState([
-    {
-      id: "reg-act-1",
-      severity: "CRITICAL",
-      severityColor: "#f1526f",
-      title: "Team South Target SLA Breach",
-      team: "South Team / Bangalore South",
-      description: "Team is at 60% achievement vs 75% expected. 14 overdue follow-ups and 6 high-value leads uncontacted.",
-      time: "10 mins ago",
-      assignedManager: "Priya Reddy"
-    },
-    {
-      id: "reg-act-2",
-      severity: "HIGH",
-      severityColor: "#fca004",
-      title: "Insurance Product Contribution Shortfall",
-      team: "East Team / Kolkata Central",
-      description: "Insurance target gap is -₹1.2 Cr across East and South branches.",
-      time: "25 mins ago",
-      assignedManager: "Subhash Roy"
-    },
-    {
-      id: "reg-act-3",
-      severity: "MEDIUM",
-      severityColor: "#3ea4f5",
-      title: "Reassign Untouched High-Intent Lead",
-      team: "South Team",
-      description: "Lead 'Kavita Rao' ₹45L uncontacted for 48h.",
-      time: "1 hour ago",
-      assignedManager: "Priya Reddy"
-    }
-  ]);
-
-  // Product Intelligence dataset
-  const productIntelligence = [
-    { name: "Mutual Funds", target: "₹4.5 Cr", achieved: "₹4.0 Cr", conv: "25%", growth: "+12%", status: "On Track" },
-    { name: "Insurance", target: "₹3.0 Cr", achieved: "₹1.8 Cr", conv: "18%", growth: "+4%", status: "Gap Primary Driver" },
-    { name: "Bonds & NCDs", target: "₹2.0 Cr", achieved: "₹1.2 Cr", conv: "14%", growth: "-8%", status: "Declining" },
-    { name: "Wealth PMS", target: "₹3.0 Cr", achieved: "₹2.8 Cr", conv: "28%", growth: "+18%", status: "Top Performer" }
-  ];
-
-  // Sorting logic for teams table
-  const sortedTeams = [...teamsData].sort((a, b) => {
-    if (sortField === 'achievement') return b.achievedPct - a.achievedPct;
-    if (sortField === 'runRate') return b.runRate - a.runRate;
-    if (sortField === 'conversion') return b.conversion - a.conversion;
-    if (sortField === 'sla') return b.slaBreaches - a.slaBreaches;
+  const branchesData = regionalDashboard?.branch_performance || [];
+  const sortedBranches = [...branchesData].sort((a, b) => {
+    if (sortField === 'achievement') return b.achievement_percentage - a.achievement_percentage;
+    if (sortField === 'pipeline') return b.pipeline - a.pipeline;
+    if (sortField === 'sla') return b.sla_breaches - a.sla_breaches;
     return 0;
   });
 
-  const handleEscalateOpportunity = (opp) => {
-    showToast(`🚨 Opportunity escalated to ${opp.manager} (Regional Head Override)!`, 'error');
-    setOpportunities(prev => prev.map(o => o.id === opp.id ? { ...o, status: "Escalated to Regional Head", risk: "ESCALATED" } : o));
-  };
+  const chartBranchData = branchesData.map(b => ({
+    name: b.branch_name.replace('Wealth Management ', '').replace('Branch ', ''),
+    achievementPct: b.achievement_percentage,
+    target: b.target / 100000,
+    achieved: b.achieved / 100000,
+    pipeline: b.pipeline / 100000
+  }));
 
-  const handleActionResolve = (actionId) => {
-    setRegionalActions(prev => prev.filter(a => a.id !== actionId));
-    showToast(`✅ Action resolved and logged in regional audit trail.`, 'success');
-  };
-
-  const handleSendManagerNote = (teamId, managerName) => {
-    const note = actionNotes[teamId];
-    if (!note) return;
-    showToast(`📩 Regional Note sent to Manager ${managerName}: "${note}"`, 'info');
-    setActionNotes(prev => ({ ...prev, [teamId]: '' }));
-  };
-
-  // Pie chart colors
-  const COLORS = ['#01c58a', '#3ea4f5', '#fca004', '#f1526f'];
+  const pipelineStageData = regionalDashboard?.pipeline_by_stage || [];
+  const highValueOpps = regionalDashboard?.high_value_opportunities || [];
+  const regionalActions = regionalDashboard?.actions || [];
+  const risksList = regionalDashboard?.risks || [];
+  const recognitionList = regionalDashboard?.recognition || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* 1. EXECUTIVE NATURAL-LANGUAGE REGIONAL SUMMARY BANNER */}
-      <div
-        className="glass-card"
-        style={{
-          background: 'linear-gradient(135deg, rgba(241, 82, 111, 0.12), rgba(62, 164, 245, 0.12))',
-          border: '1px solid rgba(241, 82, 111, 0.3)',
-          padding: '1.25rem 1.5rem',
-          borderRadius: '16px'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyBetween: 'space-between', gap: '1rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--accent-regional)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 0 15px rgba(241, 82, 111, 0.4)' }}>
-              <Sparkles size={24} />
-            </div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
+            Good morning, {currentUser?.username || 'Regional Head'}! 👋
+          </div>
+          <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+            Regional Dashboard — Multi-Branch Oversight & Strategic Operational Intelligence ({regionalDashboard?.region_name || 'Northern Region'})
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span style={{ 
+            fontSize: '0.78rem', 
+            background: 'rgba(241, 82, 111, 0.15)', 
+            color: 'var(--accent-regional)', 
+            padding: '0.35rem 0.75rem', 
+            borderRadius: '20px', 
+            fontWeight: 700, 
+            border: '1px solid rgba(241, 82, 111, 0.4)' 
+          }}>
+            Regional Workspace • 3s Live Polling
+          </span>
+        </div>
+      </div>
+
+      {/* Dynamic Regional Executive Brief */}
+      <div className="glass-card" style={{ borderLeft: '4px solid var(--accent-regional)', background: 'linear-gradient(135deg, rgba(241, 82, 111, 0.06) 0%, rgba(62, 164, 245, 0.03) 100%)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.35rem' }}>
+          <Zap size={18} style={{ color: 'var(--accent-regional)' }} />
+          <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+            Regional Executive Operational Brief
+          </span>
+        </div>
+        <div style={{ fontSize: '0.92rem', color: 'var(--text-main)', lineHeight: '1.5', fontWeight: 500 }}>
+          {regionalDashboard?.executive_brief || 'Loading live regional performance telemetry from PostgreSQL...'}
+        </div>
+      </div>
+
+      {/* 8 Regional Executive KPI Cards */}
+      <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+        
+        <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
+          <div className="metric-header">
+            <span>Regional Target</span>
+            <Target size={16} style={{ color: 'var(--accent-regional)' }} />
+          </div>
+          <div className="metric-value" style={{ color: 'var(--text-main)' }}>
+            {regionalDashboard ? fmt(regionalDashboard.regional_target) : '--'}
+          </div>
+          <div className="metric-sub" style={{ color: 'var(--text-muted)' }}>
+            Total Allocated Target
+          </div>
+        </div>
+
+        <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
+          <div className="metric-header">
+            <span>Achieved Revenue</span>
+            <TrendingUp size={16} style={{ color: 'var(--accent-rm)' }} />
+          </div>
+          <div className="metric-value" style={{ color: 'var(--accent-rm)' }}>
+            {regionalDashboard ? fmt(regionalDashboard.regional_achieved) : '--'}
+          </div>
+          <div className="metric-sub text-positive">
+            PostgreSQL Settled Total
+          </div>
+        </div>
+
+        <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
+          <div className="metric-header">
+            <span>Regional Achievement %</span>
+            <Award size={16} style={{ color: 'var(--accent-regional)' }} />
+          </div>
+          <div className="metric-value" style={{ color: (regionalDashboard?.regional_achievement_percentage || 0) >= (regionalDashboard?.expected_run_rate || 67.74) ? 'var(--accent-rm)' : 'var(--accent-regional)' }}>
+            {regionalDashboard ? `${regionalDashboard.regional_achievement_percentage.toFixed(1)}%` : '--'}
+          </div>
+          <div className="metric-sub" style={{ color: 'var(--text-muted)' }}>
+            vs Expected Run-Rate: <strong style={{ color: 'var(--text-main)' }}>{regionalDashboard?.expected_run_rate}%</strong>
+          </div>
+        </div>
+
+        <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
+          <div className="metric-header">
+            <span>Total Regional Pipeline</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--accent-regional)', fontWeight: 700 }}>Value</span>
+          </div>
+          <div className="metric-value">
+            {regionalDashboard ? fmt(regionalDashboard.total_pipeline) : '--'}
+          </div>
+          <div className="metric-sub text-positive">
+            Weighted: <strong style={{ color: 'var(--text-main)' }}>{regionalDashboard ? fmt(regionalDashboard.total_weighted_pipeline) : '--'}</strong>
+          </div>
+        </div>
+
+        <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
+          <div className="metric-header">
+            <span>Active Branches</span>
+            <Building2 size={16} style={{ color: 'var(--accent-regional)' }} />
+          </div>
+          <div className="metric-value">
+            {regionalDashboard ? regionalDashboard.active_branches_count : '--'}
+          </div>
+          <div className="metric-sub" style={{ color: 'var(--text-muted)' }}>
+            Operational Branches
+          </div>
+        </div>
+
+        <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
+          <div className="metric-header">
+            <span>Branches At Risk</span>
+            <AlertTriangle size={16} style={{ color: 'var(--accent-regional)' }} />
+          </div>
+          <div className="metric-value" style={{ color: 'var(--accent-regional)' }}>
+            {regionalDashboard ? `${regionalDashboard.at_risk_branches_count} Branches` : '--'}
+          </div>
+          <div className="metric-sub text-negative">
+            Lagging or SLA Breach
+          </div>
+        </div>
+      </div>
+
+      {/* Target vs Achievement & Branch Comparison Charts Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '1.5rem' }}>
+        
+        {/* Regional Target Progress Bar */}
+        <div className="glass-card">
+          <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <BarChart3 size={18} style={{ color: 'var(--accent-regional)' }} />
+            <span>Regional Target vs Achievement</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
             <div>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span>Regional Executive Brief & Performance Engine</span>
-                <span style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'var(--accent-regional)', color: '#fff', fontWeight: 700 }}>LIVE ANALYSIS</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Overall Regional Achievement</span>
+                <span style={{ fontWeight: 800, color: 'var(--text-main)' }}>
+                  {regionalDashboard ? `${regionalDashboard.regional_achievement_percentage.toFixed(1)}%` : '0%'}
+                </span>
               </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', marginTop: '0.4rem', lineHeight: 1.5 }}>
-                Region is at <strong>78.4% achievement (₹9.8 Cr)</strong> against an expected <strong>84.0% run-rate</strong>. The primary target gap is driven by <strong>Team South (-₹1.2 Cr)</strong> due to lower conversion (14.2%) and insufficient pipeline. <strong>6 high-value opportunities</strong> require immediate regional intervention.
+              <div style={{ height: '12px', background: 'var(--input-bg)', borderRadius: '6px', overflow: 'hidden' }}>
+                <div 
+                  style={{ 
+                    height: '100%', 
+                    width: `${Math.min(100, regionalDashboard?.regional_achievement_percentage || 0)}%`, 
+                    background: (regionalDashboard?.regional_achievement_percentage || 0) >= (regionalDashboard?.expected_run_rate || 67.74) 
+                      ? 'linear-gradient(90deg, var(--accent-rm), #22c55e)' 
+                      : 'linear-gradient(90deg, var(--accent-regional), #f5a623)',
+                    transition: 'width 0.5s ease'
+                  }} 
+                />
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--input-bg)', padding: '1rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Target Revenue:</span>
+                <strong style={{ color: 'var(--text-main)' }}>{fmt(regionalDashboard?.regional_target)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Settled Revenue:</span>
+                <strong style={{ color: 'var(--accent-rm)' }}>{fmt(regionalDashboard?.regional_achieved)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Expected Run-Rate Benchmark:</span>
+                <strong style={{ color: '#f5a623' }}>{regionalDashboard?.expected_run_rate}%</strong>
               </div>
             </div>
           </div>
+        </div>
 
-          <div style={{ display: 'flex', gap: '0.65rem' }}>
-            <button
-              onClick={() => showToast('⚡ Regional Executive Sync Requested with all 4 Branch Managers', 'info')}
+        {/* Branch Performance Bar Chart */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Building2 size={18} style={{ color: 'var(--accent-regional)' }} />
+              <span>Branch Achievement % Comparison</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>PostgreSQL Live Data</span>
+          </div>
+
+          <div style={{ height: '200px', width: '100%' }}>
+            {chartBranchData.length === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                No branch data available.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartBranchData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" />
+                  <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} />
+                  <YAxis stroke="var(--text-muted)" fontSize={11} domain={[0, 200]} unit="%" />
+                  <Tooltip 
+                    contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-glass-hover)', borderRadius: '8px' }} 
+                    formatter={(val) => [`${val}%`, 'Achievement']}
+                  />
+                  <Bar dataKey="achievementPct" radius={[6, 6, 0, 0]}>
+                    {chartBranchData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.achievementPct >= (regionalDashboard?.expected_run_rate || 67.74) ? '#01c58a' : '#f1526f'} 
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Branch Performance Table */}
+      <div id="branch-performance" className="glass-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Building2 size={18} style={{ color: 'var(--accent-regional)' }} />
+              <span>Branch Performance Oversight ({sortedBranches.length} Branches)</span>
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              Real-time branch rankings, target achievement, pipeline, and SLA risk monitoring
+            </div>
+          </div>
+
+          {/* Sort Control */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sort by:</span>
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                background: 'var(--accent-regional)',
-                border: 'none',
-                color: '#fff',
-                borderRadius: '8px',
-                padding: '0.55rem 0.95rem',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                cursor: 'pointer'
+                background: 'var(--input-bg)',
+                border: '1px solid var(--border-glass-hover)',
+                color: 'var(--text-main)',
+                borderRadius: '6px',
+                padding: '0.3rem 0.6rem',
+                fontSize: '0.8rem',
+                outline: 'none'
               }}
             >
-              <Send size={14} />
-              <span>Request Managers Sync</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. REGIONAL OVERVIEW LIVE KPIS (12 KEY METRICS) */}
-      <div id="regional-overview">
-        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Building2 size={20} style={{ color: 'var(--accent-regional)' }} />
-          <span>Regional Overview & High-Level KPIs</span>
-        </div>
-
-        <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-          <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
-            <div className="metric-header">
-              <span>Regional Target</span>
-              <Target size={16} style={{ color: 'var(--accent-regional)' }} />
-            </div>
-            <div className="metric-value">₹12.5 Cr</div>
-            <div className="metric-sub text-muted">Monthly Target</div>
-          </div>
-
-          <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-rm)' }}>
-            <div className="metric-header">
-              <span>Regional Achievement</span>
-              <TrendingUp size={16} style={{ color: 'var(--accent-rm)' }} />
-            </div>
-            <div className="metric-value" style={{ color: 'var(--accent-rm)' }}>₹9.8 Cr</div>
-            <div className="metric-sub text-positive">78.4% Achieved</div>
-          </div>
-
-          <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-manager)' }}>
-            <div className="metric-header">
-              <span>Expected Run-rate</span>
-              <BarChart3 size={16} style={{ color: 'var(--accent-manager)' }} />
-            </div>
-            <div className="metric-value">84.0%</div>
-            <div className="metric-sub text-negative">Target Gap: -5.6%</div>
-          </div>
-
-          <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-admin)' }}>
-            <div className="metric-header">
-              <span>Total Pipeline Value</span>
-              <Zap size={16} style={{ color: 'var(--accent-admin)' }} />
-            </div>
-            <div className="metric-value">₹4.2 Cr</div>
-            <div className="metric-sub text-positive">Active Deals</div>
-          </div>
-
-          <div className="glass-card metric-card">
-            <div className="metric-header">
-              <span>Conversion Rate</span>
-              <Activity size={16} style={{ color: 'var(--accent-rm)' }} />
-            </div>
-            <div className="metric-value">18.5%</div>
-            <div className="metric-sub text-muted">Regional Average</div>
-          </div>
-
-          <div className="glass-card metric-card">
-            <div className="metric-header">
-              <span>Active Customers</span>
-              <Users size={16} style={{ color: 'var(--accent-manager)' }} />
-            </div>
-            <div className="metric-value">450</div>
-            <div className="metric-sub text-positive">1,240 Total Leads</div>
-          </div>
-
-          <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
-            <div className="metric-header">
-              <span>SLA Breaches</span>
-              <AlertTriangle size={16} style={{ color: 'var(--accent-regional)' }} />
-            </div>
-            <div className="metric-value" style={{ color: 'var(--accent-regional)' }}>17</div>
-            <div className="metric-sub text-negative">24 Overdue Follow-ups</div>
-          </div>
-
-          <div className="glass-card metric-card" style={{ borderTop: '3px solid var(--accent-regional)' }}>
-            <div className="metric-header">
-              <span>Opportunities at Risk</span>
-              <ShieldAlert size={16} style={{ color: 'var(--accent-regional)' }} />
-            </div>
-            <div className="metric-value" style={{ color: 'var(--accent-regional)' }}>6</div>
-            <div className="metric-sub text-negative">High Value Uncontacted</div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. TEAM / BRANCH PERFORMANCE COMPARISON TABLE */}
-      <div id="teams-branches" className="glass-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-          <div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <MapPin size={20} style={{ color: 'var(--accent-regional)' }} />
-              <span>Team & Branch Performance Benchmarking</span>
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Click any team row to launch 4-level drill-down: <strong>Region → Branch Manager → RMs → Customer/Lead</strong>
-            </div>
-          </div>
-
-          {/* Sort Filters */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Filter size={15} style={{ color: 'var(--text-muted)' }} />
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Sort By:</span>
-            {[
-              { id: 'achievement', label: '% Achievement' },
-              { id: 'runRate', label: 'Run-rate' },
-              { id: 'conversion', label: 'Conversion' },
-              { id: 'sla', label: 'SLA Breaches' }
-            ].map(f => (
-              <button
-                key={f.id}
-                onClick={() => setSortField(f.id)}
-                style={{
-                  background: sortField === f.id ? 'var(--accent-regional)' : 'var(--input-bg)',
-                  border: `1px solid ${sortField === f.id ? 'var(--accent-regional)' : 'var(--border-glass)'}`,
-                  color: sortField === f.id ? '#fff' : 'var(--text-main)',
-                  borderRadius: '6px',
-                  padding: '0.35rem 0.65rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
+              <option value="achievement">Target Achievement %</option>
+              <option value="pipeline">Total Pipeline Value</option>
+              <option value="sla">SLA Breaches</option>
+            </select>
           </div>
         </div>
 
@@ -454,494 +355,409 @@ export const RegionalDashboard = () => {
           <table className="custom-table">
             <thead>
               <tr>
-                <th>Team / Branch</th>
+                <th>Branch Name</th>
                 <th>Branch Manager</th>
                 <th>Target</th>
                 <th>Achieved</th>
                 <th>Achievement %</th>
-                <th>Run-rate</th>
-                <th>Conversion</th>
-                <th>SLA / Overdue</th>
-                <th>Risk Level</th>
+                <th>Target Gap</th>
+                <th>Pipeline</th>
+                <th>SLA Breaches</th>
+                <th>Status</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {sortedTeams.map((team) => (
-                <tr 
-                  key={team.id}
-                  onClick={() => setSelectedBranchDrill(team)}
-                  style={{ cursor: 'pointer', transition: 'background 0.2s ease' }}
-                  className="table-row-hover"
-                >
-                  <td style={{ fontWeight: 800, color: 'var(--text-main)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span>{team.name}</span>
-                      <ChevronRight size={14} style={{ color: 'var(--accent-regional)' }} />
+              {sortedBranches.length === 0 ? (
+                <tr>
+                  <td colSpan="10" style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', padding: '1.5rem' }}>
+                    No branches currently assigned to this region.
+                  </td>
+                </tr>
+              ) : (
+                sortedBranches.map((b) => (
+                  <tr key={b.branch_id} style={{ cursor: 'pointer' }} onClick={() => openBranchDetail(b.branch_id)}>
+                    <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <Building2 size={15} style={{ color: 'var(--accent-regional)' }} />
+                        <span>{b.branch_name}</span>
+                      </div>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{b.manager_name}</td>
+                    <td>{fmt(b.target)}</td>
+                    <td style={{ color: 'var(--accent-rm)', fontWeight: 700 }}>{fmt(b.achieved)}</td>
+                    <td style={{ fontWeight: 800, color: b.achievement_percentage >= (regionalDashboard?.expected_run_rate || 67.74) ? 'var(--accent-rm)' : 'var(--accent-regional)' }}>
+                      {b.achievement_percentage}%
+                    </td>
+                    <td>{fmt(b.target_gap)}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{fmt(b.pipeline)}</td>
+                    <td style={{ fontWeight: 700, color: b.sla_breaches > 0 ? 'var(--accent-regional)' : 'var(--text-muted)' }}>
+                      {b.sla_breaches}
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          background: b.status === 'On Track' ? 'rgba(1, 197, 138, 0.15)' : 'rgba(241, 82, 111, 0.15)',
+                          color: b.status === 'On Track' ? 'var(--accent-rm)' : 'var(--accent-regional)',
+                          border: `1px solid ${b.status === 'On Track' ? 'rgba(1, 197, 138, 0.4)' : 'rgba(241, 82, 111, 0.4)'}`
+                        }}
+                      >
+                        {b.status}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openBranchDetail(b.branch_id);
+                        }}
+                        style={{
+                          background: 'rgba(241, 82, 111, 0.15)',
+                          border: '1px solid rgba(241, 82, 111, 0.4)',
+                          color: 'var(--accent-regional)',
+                          borderRadius: '6px',
+                          padding: '0.3rem 0.65rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Inspect Branch
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Split Grid: Regional Risk & Recognition Highlights */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.6fr', gap: '1.5rem' }}>
+        
+        {/* Regional Risk & Escalations */}
+        <div className="glass-card" style={{ borderLeft: '4px solid var(--accent-regional)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <ShieldAlert size={18} color="var(--accent-regional)" />
+              <span>Regional Risks & Escalations ({risksList.length})</span>
+            </div>
+          </div>
+
+          {risksList.length === 0 ? (
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '0.5rem 0' }}>
+              No active operational risks detected across regional branches.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '250px', overflowY: 'auto' }}>
+              {risksList.map((r, idx) => (
+                <div key={idx} style={{ background: 'var(--input-bg)', borderLeft: '4px solid var(--accent-regional)', borderRadius: '6px', padding: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                      {r.branch_name} ({r.manager_name})
+                    </span>
+                    <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(241, 82, 111, 0.15)', color: 'var(--accent-regional)', fontWeight: 800 }}>
+                      {r.severity} • {r.category}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{r.reason}</div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--accent-rm)', marginTop: '0.25rem', fontStyle: 'italic' }}>
+                    Focus: {r.recommended_action}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Regional Recognition & Highlights */}
+        <div className="glass-card" style={{ borderLeft: '4px solid var(--accent-rm)' }}>
+          <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Award size={18} color="var(--accent-rm)" />
+            <span>Regional Highlights & Recognition</span>
+          </div>
+
+          {recognitionList.length === 0 ? (
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '0.5rem 0' }}>
+              No branch milestones detected yet for the current period.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {recognitionList.map((rec, idx) => (
+                <div key={idx} style={{ background: 'var(--input-bg)', border: '1px solid rgba(1, 197, 138, 0.3)', borderRadius: '8px', padding: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                      🏆 {rec.title}: {rec.branch_name}
                     </div>
-                  </td>
-                  <td style={{ fontWeight: 600 }}>{team.manager}</td>
-                  <td>₹{(team.target / 10000000).toFixed(1)} Cr</td>
-                  <td style={{ fontWeight: 700, color: 'var(--accent-rm)' }}>₹{(team.achieved / 10000000).toFixed(1)} Cr</td>
-                  <td>
-                    <span style={{ fontWeight: 800, color: team.achievedPct >= 80 ? 'var(--accent-rm)' : 'var(--accent-regional)' }}>
-                      {team.achievedPct}%
-                    </span>
-                  </td>
-                  <td>{team.runRate}%</td>
-                  <td>{team.conversion}%</td>
-                  <td style={{ color: team.slaBreaches > 3 ? 'var(--accent-regional)' : 'var(--text-main)' }}>
-                    {team.slaBreaches} breaches ({team.overdue} overdue)
-                  </td>
-                  <td>
-                    <span style={{ padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, background: `${team.riskColor}20`, color: team.riskColor, border: `1px solid ${team.riskColor}50` }}>
-                      {team.riskLevel.toUpperCase()}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedBranchDrill(team);
-                      }}
-                      style={{ background: 'var(--accent-regional)', border: 'none', color: '#fff', borderRadius: '6px', padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Drill Down
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 4. PERFORMANCE TRENDS & CHARTS */}
-      <div id="performance-trends" style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr', gap: '1.5rem' }}>
-        
-        {/* Trend Bar Chart */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <div>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)' }}>Target vs Achievement Trends</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Multi-branch revenue contribution comparison</div>
-            </div>
-
-            {/* Time Period Tabs */}
-            <div style={{ display: 'flex', background: 'var(--input-bg)', borderRadius: '8px', padding: '0.2rem' }}>
-              {[
-                { id: 'today', label: 'Today' },
-                { id: 'week', label: 'This Week' },
-                { id: 'month', label: 'This Month' }
-              ].map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setTimePeriod(t.id)}
-                  style={{
-                    padding: '0.35rem 0.75rem',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: timePeriod === t.id ? 'var(--accent-regional)' : 'transparent',
-                    color: timePeriod === t.id ? '#fff' : 'var(--text-muted)',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ width: '100%', height: 230 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={teamsData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-glass)" />
-                <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} tickFormatter={(val) => val.split('/')[0]} />
-                <YAxis stroke="var(--text-muted)" fontSize={11} tickFormatter={(val) => `₹${val / 10000000}Cr`} />
-                <Tooltip contentStyle={{ background: 'var(--modal-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-main)' }} />
-                <Bar dataKey="target" name="Target" fill="var(--border-glass-hover)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="achieved" name="Achieved" fill="var(--accent-regional)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Team Contribution Pie Chart */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.2rem' }}>
-              Team Revenue Contribution
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Proportion of total regional achievement
-            </div>
-
-            <div style={{ width: '100%', height: 180, display: 'flex', justifyContent: 'center' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <RechartsPie>
-                  <Pie
-                    data={teamsData}
-                    dataKey="achieved"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={70}
-                    innerRadius={40}
-                  >
-                    {teamsData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: 'var(--modal-bg)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'var(--text-main)' }} />
-                </RechartsPie>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'center' }}>
-            {teamsData.map((t, idx) => (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: COLORS[idx % COLORS.length] }} />
-                <span>{t.name.split('/')[0]} ({((t.achieved / 98000000) * 100).toFixed(0)}%)</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 5. REGIONAL MISS DETECTION & ALERTS */}
-      <div id="misses-risks" className="glass-card">
-        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <AlertTriangle size={20} style={{ color: 'var(--accent-regional)' }} />
-          <span>Regional Miss & Risk Detection Engine</span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          <div style={{ background: 'rgba(241, 82, 111, 0.1)', border: '1px solid rgba(241, 82, 111, 0.3)', borderRadius: '12px', padding: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-regional)' }}>
-                ⚠ Team South Performance Shortfall
-              </div>
-              <span style={{ fontSize: '0.72rem', background: 'var(--accent-regional)', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 700 }}>
-                CRITICAL GAP
-              </span>
-            </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', marginBottom: '0.75rem' }}>
-              Achievement: <strong>60% (₹1.8 Cr)</strong> vs Expected: <strong>75% (₹2.25 Cr)</strong>
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <div>• <strong>Conversion down 8%</strong> (currently 14.2% vs 22% regional avg)</div>
-              <div>• <strong>₹45L pipeline at risk</strong> across 6 high-value accounts</div>
-              <div>• <strong>14 overdue follow-ups</strong> & 6 high-value leads uncontacted</div>
-            </div>
-          </div>
-
-          <div style={{ background: 'rgba(252, 160, 4, 0.1)', border: '1px solid rgba(252, 160, 4, 0.3)', borderRadius: '12px', padding: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-admin)' }}>
-                ⚠ East Team SLA Breach Spike
-              </div>
-              <span style={{ fontSize: '0.72rem', background: 'var(--accent-admin)', color: '#000', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 700 }}>
-                WARNING
-              </span>
-            </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', marginBottom: '0.75rem' }}>
-              5 SLA breaches recorded in Kolkata Central branch in last 24 hours.
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <div>• <strong>Primary Driver:</strong> RM Amitav Ghosh overdue on 4 wealth inquiries</div>
-              <div>• <strong>Action Required:</strong> Reassign high-intent accounts to Rina Das</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 6. REGIONAL OPPORTUNITY MONITOR */}
-      <div id="opportunities" className="glass-card">
-        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Target size={20} style={{ color: 'var(--accent-rm)' }} />
-          <span>Regional High-Value Opportunity Monitor</span>
-        </div>
-
-        <div className="custom-table-container">
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th>Opportunity</th>
-                <th>Customer Name</th>
-                <th>Team / Branch</th>
-                <th>Assigned RM</th>
-                <th>Potential Value</th>
-                <th>Status / SLA Risk</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {opportunities.map((opp) => (
-                <tr key={opp.id}>
-                  <td style={{ fontWeight: 800, color: 'var(--text-main)' }}>{opp.title}</td>
-                  <td>{opp.customer}</td>
-                  <td>{opp.team}</td>
-                  <td style={{ fontWeight: 600 }}>{opp.rm} ({opp.manager})</td>
-                  <td style={{ fontWeight: 800, color: 'var(--accent-rm)' }}>₹{(opp.value / 100000).toFixed(1)} Lakhs</td>
-                  <td style={{ color: opp.riskColor, fontWeight: 700 }}>{opp.status}</td>
-                  <td>
-                    <button
-                      onClick={() => handleEscalateOpportunity(opp)}
-                      style={{ background: 'var(--accent-regional)', border: 'none', color: '#fff', borderRadius: '6px', padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Escalate to Manager
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 7. REGIONAL RECOGNITION & BENCHMARKING MATRIX */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-        
-        {/* Recognition Feed */}
-        <div id="recognition-feed" className="glass-card">
-          <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Award size={20} style={{ color: '#fca004' }} />
-            <span>Regional Recognition & Victories 🏆</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-            <div style={{ background: 'rgba(1, 197, 138, 0.1)', border: '1px solid rgba(1, 197, 138, 0.3)', borderRadius: '10px', padding: '0.85rem' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--accent-rm)' }}>
-                🏆 Team North crossed 120% monthly target!
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', marginTop: '0.2rem' }}>
-                Conversion: <strong>28% (Regional Best)</strong> led by Manager Karan Malhotra.
-              </div>
-            </div>
-
-            <div style={{ background: 'rgba(62, 164, 245, 0.1)', border: '1px solid rgba(62, 164, 245, 0.3)', borderRadius: '10px', padding: '0.85rem' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--accent-manager)' }}>
-                🎉 Dormant Customer Recovery Win
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', marginTop: '0.2rem' }}>
-                RM Neha Iyer (Mumbai Central) recovered ₹35L SIP from high-net-worth client.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Benchmarking Matrix */}
-        <div id="benchmarking" className="glass-card">
-          <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingUp size={20} style={{ color: 'var(--accent-manager)' }} />
-            <span>Regional Benchmarking vs Median</span>
-          </div>
-
-          <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', background: 'var(--input-bg)', borderRadius: '8px', padding: '0.85rem', lineHeight: 1.5 }}>
-            <div style={{ fontWeight: 800, color: 'var(--accent-regional)', marginBottom: '0.3rem' }}>
-              Team South vs Regional Median Breakdown
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              <div>Achievement: <strong style={{ color: 'var(--accent-regional)' }}>↓ 18%</strong></div>
-              <div>Conversion: <strong style={{ color: 'var(--accent-regional)' }}>↓ 6%</strong></div>
-              <div>Pipeline: <strong style={{ color: 'var(--accent-regional)' }}>↓ 12%</strong></div>
-              <div>Activity: <strong style={{ color: 'var(--accent-rm)' }}>↑ 4%</strong></div>
-            </div>
-            <div style={{ fontSize: '0.78rem', marginTop: '0.5rem', color: 'var(--text-main)', fontStyle: 'italic' }}>
-              Primary issue: High activity with weak conversion + insufficient pipeline.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 8. REGIONAL ACTION CENTER ("REQUIRES REGIONAL ATTENTION") */}
-      <div id="action-center" className="glass-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <CheckSquare size={20} style={{ color: 'var(--accent-regional)' }} />
-              <span>Regional Action Center — Requires Regional Attention</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.65rem', fontSize: '0.78rem', fontWeight: 800 }}>
-            <span style={{ background: 'rgba(241, 82, 111, 0.2)', color: 'var(--accent-regional)', padding: '0.35rem 0.75rem', borderRadius: '6px' }}>
-              🔴 6 Critical
-            </span>
-            <span style={{ background: 'rgba(252, 160, 4, 0.2)', color: 'var(--accent-admin)', padding: '0.35rem 0.75rem', borderRadius: '6px' }}>
-              🟠 14 High
-            </span>
-            <span style={{ background: 'rgba(62, 164, 245, 0.2)', color: 'var(--accent-manager)', padding: '0.35rem 0.75rem', borderRadius: '6px' }}>
-              🟡 23 Medium
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {regionalActions.map((act) => (
-            <div key={act.id} style={{ background: 'var(--input-bg)', borderLeft: `4px solid ${act.severityColor}`, borderRadius: '8px', padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '0.9rem' }}>{act.title}</span>
-                  <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: `${act.severityColor}20`, color: act.severityColor, fontWeight: 700 }}>
-                    {act.severity}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                      Branch Manager: {rec.manager_name}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--accent-rm)', background: 'rgba(1, 197, 138, 0.15)', padding: '0.25rem 0.65rem', borderRadius: '6px' }}>
+                    {rec.metric}
                   </span>
                 </div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                  {act.description} • <em>{act.team}</em> ({act.assignedManager})
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  onClick={() => handleActionResolve(act.id)}
-                  style={{ background: 'var(--accent-rm)', border: 'none', color: '#fff', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Mark Resolved
-                </button>
-              </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </div>
 
-      {/* 9. CROSS-TEAM PRODUCT INTELLIGENCE */}
-      <div id="product-intelligence" className="glass-card">
-        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <PieChart size={20} style={{ color: 'var(--accent-manager)' }} />
-          <span>Cross-Team Product Performance Intelligence</span>
+      {/* High-Value Regional Opportunities Table */}
+      <div id="regional-opportunities" className="glass-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Briefcase size={18} style={{ color: 'var(--accent-regional)' }} />
+              <span>High-Value Regional Opportunities (&ge; ₹1.0L)</span>
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              Top active opportunities across all regional branches
+            </div>
+          </div>
         </div>
 
         <div className="custom-table-container">
           <table className="custom-table">
             <thead>
               <tr>
-                <th>Product Line</th>
-                <th>Target</th>
-                <th>Achieved</th>
-                <th>Conversion Rate</th>
-                <th>Growth vs Prev</th>
-                <th>Status Takeaway</th>
+                <th>Customer Name</th>
+                <th>Assigned RM</th>
+                <th>Opportunity</th>
+                <th>Potential Value</th>
+                <th>Win Prob</th>
+                <th>Stage</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {productIntelligence.map((prod, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 800, color: 'var(--text-main)' }}>{prod.name}</td>
-                  <td>{prod.target}</td>
-                  <td style={{ fontWeight: 700, color: 'var(--accent-rm)' }}>{prod.achieved}</td>
-                  <td>{prod.conv}</td>
-                  <td style={{ color: prod.growth.startsWith('+') ? 'var(--accent-rm)' : 'var(--accent-regional)', fontWeight: 700 }}>{prod.growth}</td>
-                  <td style={{ fontWeight: 600 }}>{prod.status}</td>
+              {highValueOpps.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', padding: '1.5rem' }}>
+                    No high-value opportunities currently active in this region.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                highValueOpps.map((lead) => (
+                  <tr key={lead.id}>
+                    <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>
+                      {lead.customer_name || `Customer #${lead.customer_id}`}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{lead.rm_name || `RM #${lead.assigned_rm_id}`}</td>
+                    <td>{lead.name}</td>
+                    <td style={{ fontWeight: 800, color: 'var(--accent-rm)' }}>{fmt(lead.potential_value)}</td>
+                    <td style={{ fontWeight: 700, color: '#f5a623' }}>{lead.probability}%</td>
+                    <td>
+                      <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', fontWeight: 600 }}>
+                        {lead.stage}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        background: lead.status === 'OPEN' ? 'rgba(1, 197, 138, 0.15)' : 'rgba(245, 166, 35, 0.15)',
+                        color: lead.status === 'OPEN' ? 'var(--accent-rm)' : '#f5a623'
+                      }}>
+                        {lead.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+      </div>
 
-        <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(241, 82, 111, 0.1)', borderLeft: '4px solid var(--accent-regional)', borderRadius: '6px', fontSize: '0.82rem', color: 'var(--text-main)' }}>
-          💡 <strong>Key Regional Insight:</strong> Insurance is the largest contributor to the regional target gap (-₹1.2 Cr). Reallocating RM focus to Insurance cross-sell can recover the gap.
+      {/* Regional Action Center */}
+      <div id="regional-actions" className="glass-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FileCheck size={18} style={{ color: 'var(--accent-regional)' }} />
+              <span>Regional Action Center ({regionalActions.length})</span>
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              Operational actions across regional branches requiring strategic oversight
+            </div>
+          </div>
+        </div>
+
+        <div className="custom-table-container">
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>Priority</th>
+                <th>Title / Type</th>
+                <th>Assigned RM</th>
+                <th>Description</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {regionalActions.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', padding: '1.5rem' }}>
+                    No actions currently pending across regional branches.
+                  </td>
+                </tr>
+              ) : (
+                regionalActions.map((act) => (
+                  <tr key={act.id}>
+                    <td>
+                      <span style={{
+                        padding: '0.15rem 0.45rem',
+                        borderRadius: '4px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        background: act.priority === 'CRITICAL' || act.priority === 'HIGH' ? 'rgba(241, 82, 111, 0.15)' : 'rgba(245, 166, 35, 0.15)',
+                        color: act.priority === 'CRITICAL' || act.priority === 'HIGH' ? 'var(--accent-regional)' : '#f5a623'
+                      }}>
+                        {act.priority}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{act.title || act.action_type}</td>
+                    <td style={{ fontWeight: 600 }}>{act.rm_name || `RM #${act.rm_id}`}</td>
+                    <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{act.description || act.reason || 'Operational action'}</td>
+                    <td>
+                      <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: 'var(--input-bg)', fontWeight: 600 }}>
+                        {act.status}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => setResolveTarget(act)}
+                        style={{
+                          background: 'rgba(241, 82, 111, 0.15)',
+                          border: '1px solid rgba(241, 82, 111, 0.4)',
+                          color: 'var(--accent-regional)',
+                          borderRadius: '6px',
+                          padding: '0.3rem 0.65rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Resolve Action
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* 4-LEVEL DRILL-DOWN MODAL */}
-      {selectedBranchDrill && (
-        <div className="modal-overlay" onClick={() => setSelectedBranchDrill(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                  4-Level Regional Drill-Down: {selectedBranchDrill.name}
-                </div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Region → Branch Manager ({selectedBranchDrill.manager}) → RMs → Leads
-                </div>
+      {/* Branch Detail Modal */}
+      {selectedBranchId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1.5rem' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '750px', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.85rem' }}>
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Building2 size={20} style={{ color: 'var(--accent-regional)' }} />
+                <span>{branchDetail?.branch_name || 'Branch Detail Inspection'}</span>
               </div>
-              <button onClick={() => setSelectedBranchDrill(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}>
-                ✕
+              <button onClick={() => setSelectedBranchId(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <XCircle size={20} />
               </button>
             </div>
 
-            {/* Manager Overview */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
-              <div style={{ background: 'var(--input-bg)', padding: '0.75rem', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Target / Achieved</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-rm)' }}>
-                  ₹{(selectedBranchDrill.achieved / 10000000).toFixed(1)}Cr / ₹{(selectedBranchDrill.target / 10000000).toFixed(1)}Cr
+            {isLoadingBranch ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Loading branch telemetry...</div>
+            ) : branchDetail ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                <div style={{ background: 'var(--input-bg)', padding: '1rem', borderRadius: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Branch Manager</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)' }}>{branchDetail.manager?.username || 'Unassigned'}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Branch Target / Achieved</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-rm)' }}>{fmt(branchDetail.performance?.team_achievement)} / {fmt(branchDetail.performance?.team_target)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Achievement %</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-regional)' }}>{branchDetail.performance?.team_achievement_percentage?.toFixed(1)}%</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+                    Subordinate RMs ({branchDetail.subordinate_rms?.length || 0})
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {branchDetail.subordinate_rms?.map(rm => (
+                      <span key={rm.id} style={{ background: 'var(--input-bg)', padding: '0.35rem 0.75rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
+                        👤 {rm.username}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+                    Active Branch Opportunities ({branchDetail.leads?.length || 0})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '150px', overflowY: 'auto' }}>
+                    {branchDetail.leads?.map(l => (
+                      <div key={l.id} style={{ background: 'var(--input-bg)', padding: '0.5rem 0.75rem', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                        <span>{l.name} ({l.customer_name})</span>
+                        <strong style={{ color: 'var(--accent-rm)' }}>{fmt(l.potential_value)}</strong>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div style={{ background: 'var(--input-bg)', padding: '0.75rem', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Run-rate / Conversion</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-manager)' }}>
-                  {selectedBranchDrill.runRate}% / {selectedBranchDrill.conversion}%
-                </div>
+            ) : (
+              <div style={{ color: 'var(--text-muted)' }}>Unable to load branch details.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Resolve Action Modal */}
+      {resolveTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1.5rem' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.75rem' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)' }}>Resolve Regional Action</div>
+              <button onClick={() => setResolveTarget(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmResolve} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 700 }}>
+                  Action Title
+                </label>
+                <input type="text" readOnly value={resolveTarget.title || resolveTarget.action_type} style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', background: 'var(--input-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-main)', fontSize: '0.88rem' }} />
               </div>
-              <div style={{ background: 'var(--input-bg)', padding: '0.75rem', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>SLA Breaches</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-regional)' }}>
-                  {selectedBranchDrill.slaBreaches} Breaches ({selectedBranchDrill.overdue} Overdue)
-                </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 700 }}>
+                  Resolution Notes / Management Action
+                </label>
+                <textarea rows={3} required value={resolutionNotes} onChange={(e) => setResolutionNotes(e.target.value)} placeholder="Enter resolution notes..." style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', background: 'var(--input-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-main)', fontSize: '0.88rem' }} />
               </div>
-            </div>
 
-            {/* RM Breakdown Table */}
-            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
-              Relationship Managers (RMs) in {selectedBranchDrill.name}
-            </div>
-
-            <div className="custom-table-container" style={{ marginBottom: '1rem' }}>
-              <table className="custom-table">
-                <thead>
-                  <tr>
-                    <th>RM Name</th>
-                    <th>Target</th>
-                    <th>Achieved</th>
-                    <th>Conversion</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedBranchDrill.rms.map((rm, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{rm.name}</td>
-                      <td>{rm.target}</td>
-                      <td style={{ fontWeight: 700, color: 'var(--accent-rm)' }}>{rm.achieved}</td>
-                      <td>{rm.conv}</td>
-                      <td>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px', background: rm.status.includes('Top') ? 'rgba(1,197,138,0.2)' : 'rgba(241,82,111,0.2)', color: rm.status.includes('Top') ? 'var(--accent-rm)' : 'var(--accent-regional)' }}>
-                          {rm.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Direct Note to Manager */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.3rem', fontWeight: 700 }}>
-                Send Direct Regional Note to Branch Manager ({selectedBranchDrill.manager})
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  type="text"
-                  placeholder="Type regional instruction..."
-                  value={actionNotes[selectedBranchDrill.id] || ''}
-                  onChange={(e) => setActionNotes({ ...actionNotes, [selectedBranchDrill.id]: e.target.value })}
-                  style={{ flex: 1, padding: '0.65rem', borderRadius: '6px', background: 'var(--input-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-main)' }}
-                />
-                <button
-                  onClick={() => handleSendManagerNote(selectedBranchDrill.id, selectedBranchDrill.manager)}
-                  style={{ background: 'var(--accent-regional)', border: 'none', color: '#fff', borderRadius: '6px', padding: '0.65rem 1rem', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Send Note
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button type="button" onClick={() => setResolveTarget(null)} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', background: 'var(--input-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-main)', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" disabled={isSubmittingResolve} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', background: 'var(--accent-regional)', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>
+                  {isSubmittingResolve ? 'Saving...' : 'Confirm Resolution'}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}

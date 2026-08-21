@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from app.models.models import Event
 from app.schemas.event import EventCreate
-from app.events.event_bus import event_bus
+from app.core.queue import event_queue_manager
 from fastapi import HTTPException, status
 import logging
 
@@ -43,7 +43,7 @@ async def ingest_event(db: Session, event_data: EventCreate) -> Event:
             detail="Failed to persist event to the database."
         )
 
-    # 3. Publish to EventBus
+    # 3. Queue the event
     event_dict = {
         "id": db_event.id,
         "event_type": db_event.event_type,
@@ -54,6 +54,11 @@ async def ingest_event(db: Session, event_data: EventCreate) -> Event:
         "occurred_at": db_event.occurred_at.isoformat() if db_event.occurred_at else None,
         "idempotency_key": db_event.idempotency_key
     }
-    await event_bus.publish(db_event.event_type, event_dict)
+    logger.info(f"[INGEST] event={db_event.id} type={db_event.event_type} status=QUEUED")
+    if getattr(event_queue_manager, "disabled", False):
+        from app.events.event_bus import event_bus
+        await event_bus.publish(db_event.event_type, event_dict)
+    else:
+        await event_queue_manager.enqueue(event_dict)
 
     return db_event

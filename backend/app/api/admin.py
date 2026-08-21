@@ -81,7 +81,9 @@ def get_admin_users(current_admin: User = Depends(require_admin), db: Session = 
 
 @router.post("/admin/users", response_model=UserResponse)
 def create_admin_user(request: UserCreate, request_obj: Request, current_admin: User = Depends(require_admin), db: Session = Depends(get_db)):
-    existing = db.query(User).filter((User.username == request.username) | (User.email == request.email)).first()
+    clean_username = request.username.strip()
+    clean_email = request.email.strip()
+    existing = db.query(User).filter((func.lower(User.username) == clean_username.lower()) | (func.lower(User.email) == clean_email.lower())).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -90,8 +92,8 @@ def create_admin_user(request: UserCreate, request_obj: Request, current_admin: 
     
     hashed = AuthService.hash_password(request.password)
     user = User(
-        username=request.username,
-        email=request.email,
+        username=clean_username,
+        email=clean_email,
         hashed_password=hashed,
         role=request.role,
         team_id=request.team_id,

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
-from app.models.models import Event, Action
+from app.models.models import Event, Action, Customer, Lead, Target
 from app.engine.rule_engine import rule_engine
 import logging
 
@@ -14,7 +14,7 @@ class EventProcessor:
         """
         event_id = event_dict.get("id")
         event_type = event_dict.get("event_type")
-        logger.info(f"EventProcessor: Processing event_id={event_id} type={event_type}")
+        logger.info(f"[PROCESSOR] event={event_id} type={event_type}")
 
         db = SessionLocal()
         try:
@@ -23,32 +23,85 @@ class EventProcessor:
                 logger.error(f"EventProcessor: Event {event_id} not found in database.")
                 return
 
+            if event.status not in ["PENDING", "QUEUED"]:
+                logger.warning(f"EventProcessor: Event {event_id} is already in status {event.status}. Aborting to prevent double processing.")
+                return
+
             # Update event status to PROCESSING
             event.status = "PROCESSING"
+            
+            # --- Target & Pipeline Intelligence Hook ---
+            if event.event_type in ["PAYIN_RECEIVED", "PRODUCT_PURCHASED"]:
+                amount = event.payload.get("amount", 0) or event.payload.get("value", 0)
+                if amount:
+                    amount = float(amount)
+                    rm_id = None
+                    lead_id = None
+                    
+                    if event.entity_type == "CUSTOMER":
+                        cust = db.query(Customer).filter(Customer.id == int(event.entity_id)).first()
+                        if cust:
+                            rm_id = cust.assigned_rm_id
+                            lead = db.query(Lead).filter(Lead.customer_id == cust.id, Lead.status == "OPEN").first()
+                            if lead:
+                                lead_id = lead.id
+                    elif event.entity_type == "LEAD":
+                        lead = db.query(Lead).filter(Lead.id == int(event.entity_id)).first()
+                        if lead:
+                            rm_id = lead.assigned_rm_id
+                            lead_id = lead.id
+                            
+                    if rm_id:
+                        target = db.query(Target).filter(Target.rm_id == rm_id).first()
+                        if target:
+                            target.achieved_value = float(target.achieved_value) + amount
+                            logger.info(f"EventProcessor: Incremented RM {rm_id} target achieved by {amount}.")
+                            
+                    if lead_id:
+                        lead_obj = db.query(Lead).filter(Lead.id == lead_id).first()
+                        lead_obj.actual_value = float(lead_obj.actual_value) + amount
+                        if lead_obj.actual_value >= lead_obj.potential_value:
+                            lead_obj.status = "CLOSED"
+                            lead_obj.stage = "CONVERTED"
+                        logger.info(f"EventProcessor: Updated Lead {lead_id} actual value by {amount}.")
+            # ----------------------------------------
+            
             db.commit()
 
             # Evaluate rules
             proposed_actions = await rule_engine.evaluate_rules(db, event)
             logger.info(f"EventProcessor: Generated {len(proposed_actions)} proposed actions.")
 
-            # Persist actions transactionally
+            # Persist actions & suggestions transactionally
             actions_created = 0
-            for action in proposed_actions:
-                # Check for existing PENDING actions of same type/RM/entities
-                duplicate = db.query(Action).filter(
-                    Action.action_type == action.action_type,
-                    Action.rm_id == action.rm_id,
-                    Action.customer_id == action.customer_id,
-                    Action.lead_id == action.lead_id,
-                    Action.status == "PENDING"
-                ).first()
+            for item in proposed_actions:
+                if isinstance(item, Action):
+                    duplicate = db.query(Action).filter(
+                        Action.action_type == item.action_type,
+                        Action.rm_id == item.rm_id,
+                        Action.customer_id == item.customer_id,
+                        Action.lead_id == item.lead_id,
+                        Action.status == "PENDING"
+                    ).first()
 
-                if not duplicate:
-                    db.add(action)
-                    actions_created += 1
-                    logger.info(f"EventProcessor: Staged Action {action.action_type} for RM {action.rm_id}")
-                else:
-                    logger.info(f"EventProcessor: Duplicate PENDING action for {action.action_type} skipped.")
+                    if not duplicate:
+                        db.add(item)
+                        actions_created += 1
+                        logger.info(f"[ACTION] event={event_id} action={item.action_type} id={item.id} rm={item.rm_id} priority={item.priority} score={item.score}")
+                    else:
+                        logger.info(f"EventProcessor: Duplicate PENDING action for {item.action_type} skipped.")
+                elif isinstance(item, Lead):
+                    duplicate_lead = db.query(Lead).filter(
+                        Lead.customer_id == item.customer_id,
+                        Lead.status.in_(["OPEN", "SUGGESTED"])
+                    ).first()
+
+                    if not duplicate_lead:
+                        db.add(item)
+                        actions_created += 1
+                        logger.info(f"[SUGGESTION] event={event_id} suggestion created for customer={item.customer_id}")
+                    else:
+                        logger.info(f"EventProcessor: Duplicate Lead/Suggestion for Customer {item.customer_id} skipped.")
 
             # Success updates
             from datetime import datetime

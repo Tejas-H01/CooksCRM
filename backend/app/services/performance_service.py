@@ -72,18 +72,30 @@ class PerformanceService:
         ).count()
 
         # 4. Pipeline calculations
-        # Sum of potential values of open leads/opportunities
-        pipeline_sum = db.query(func.sum(Lead.potential_value)).filter(
+        open_leads_list = db.query(Lead).filter(
             Lead.assigned_rm_id == rm_id,
             Lead.status == "OPEN"
-        ).scalar()
-        pipeline_value = float(pipeline_sum) if pipeline_sum is not None else 0.0
+        ).all()
+        
+        pipeline_value = 0.0
+        weighted_pipeline = 0.0
+        remaining_opportunity = 0.0
+        
+        for l in open_leads_list:
+            expected = float(l.potential_value) if l.potential_value is not None else 0.0
+            actual = float(l.actual_value) if l.actual_value is not None else 0.0
+            prob = float(l.probability) / 100.0 if l.probability is not None else 0.5
+            rem_opp = max(0.0, expected - actual)
+            
+            pipeline_value += expected
+            remaining_opportunity += rem_opp
+            weighted_pipeline += (rem_opp * prob)
 
         remaining_target = max(0.0, target_val - achieved_val)
         if remaining_target > 0:
-            pipeline_coverage = round(pipeline_value / remaining_target, 2)
+            pipeline_coverage = round(weighted_pipeline / remaining_target, 2)
         else:
-            pipeline_coverage = 99.0 if pipeline_value > 0.0 else 0.0
+            pipeline_coverage = 99.0 if weighted_pipeline > 0.0 else 0.0
 
         # 5. SLA & Ageing
         overdue_followups = db.query(Lead).filter(
@@ -187,6 +199,9 @@ class PerformanceService:
             target_gap=target_gap,
             conversion_rate=conversion_rate,
             pipeline_value=pipeline_value,
+            weighted_pipeline=weighted_pipeline,
+            remaining_opportunity=remaining_opportunity,
+            remaining_target=remaining_target,
             pipeline_coverage=pipeline_coverage,
             calls_completed=calls_count,
             meetings_completed=meetings_count,
@@ -220,6 +235,7 @@ class PerformanceService:
                 target_gap=0.0,
                 average_conversion=0.0,
                 total_pipeline=0.0,
+                total_weighted_pipeline=0.0,
                 overdue_follow_ups=0,
                 sla_breach_count=0,
                 rm_rankings=[],
@@ -231,6 +247,7 @@ class PerformanceService:
         team_target = 0.0
         team_achievement = 0.0
         total_pipeline = 0.0
+        total_weighted_pipeline = 0.0
         overdue_follow_ups = 0
         sla_breach_count = 0
         conversions = []
@@ -242,6 +259,7 @@ class PerformanceService:
             team_target += perf.target
             team_achievement += perf.achieved
             total_pipeline += perf.pipeline_value
+            total_weighted_pipeline += perf.weighted_pipeline
             overdue_follow_ups += perf.overdue_followups
             sla_breach_count += perf.sla_breach_count
             conversions.append(perf.conversion_rate)
@@ -249,9 +267,15 @@ class PerformanceService:
             rankings.append(RMRanking(
                 rm_id=rm.id,
                 rm_name=rm.username,
+                target=perf.target,
+                achieved=perf.achieved,
+                remaining_target=perf.remaining_target,
                 achievement_percentage=perf.achievement_percentage,
                 conversion_rate=perf.conversion_rate,
-                pipeline_value=perf.pipeline_value
+                pipeline_value=perf.pipeline_value,
+                weighted_pipeline=perf.weighted_pipeline,
+                overdue_followups=perf.overdue_followups,
+                status="On Track" if perf.achievement_percentage >= cls._get_expected_run_rate() else "At Risk"
             ))
 
         # Sort rankings: Achievement Percentage (Descending) as default metric
@@ -276,6 +300,7 @@ class PerformanceService:
             target_gap=target_gap,
             average_conversion=avg_conversion,
             total_pipeline=total_pipeline,
+            total_weighted_pipeline=total_weighted_pipeline,
             overdue_follow_ups=overdue_follow_ups,
             sla_breach_count=sla_breach_count,
             rm_rankings=rankings,

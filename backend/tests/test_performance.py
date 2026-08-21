@@ -94,7 +94,7 @@ def test_pipeline_value(db_session):
 
 def test_pipeline_coverage(db_session):
     target = Target(rm_id=1, product="Mutual Funds", period="monthly", target_value=Decimal("200000.00"), achieved_value=Decimal("100000.00"))
-    lead1 = Lead(id=1, customer_id=1, assigned_rm_id=1, potential_value=Decimal("250000.00"), status="OPEN", stage="NEW")
+    lead1 = Lead(id=1, customer_id=1, assigned_rm_id=1, potential_value=Decimal("250000.00"), probability=100, status="OPEN", stage="NEW")
     db_session.add_all([target, lead1])
     db_session.commit()
 

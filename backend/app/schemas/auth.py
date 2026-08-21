@@ -5,10 +5,6 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-
 class UserResponse(BaseModel):
     id: int
     username: str
@@ -20,3 +16,8 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: Optional[UserResponse] = None

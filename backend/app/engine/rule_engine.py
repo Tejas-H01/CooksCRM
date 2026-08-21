@@ -26,14 +26,18 @@ class RuleEngine:
 
     async def evaluate_rules(self, db: Session, event: Event) -> List[Action]:
         generated_actions: List[Action] = []
+        import logging
+        rule_logger = logging.getLogger(__name__)
         for rule in self.rules:
             try:
                 actions = await rule.evaluate(db, event)
+                result_str = "MATCH" if actions else "NO_MATCH"
+                reason_str = f" reasons={[a.reason for a in actions]}" if actions else ""
+                rule_logger.info(f"[RULE] event={event.id} rule={rule.name} result={result_str}{reason_str}")
                 if actions:
                     generated_actions.extend(actions)
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"RuleEngine: Error evaluating rule '{rule.name}': {e}", exc_info=True)
+                rule_logger.error(f"RuleEngine: Error evaluating rule '{rule.name}': {e}", exc_info=True)
         return generated_actions
 
 rule_engine = RuleEngine()

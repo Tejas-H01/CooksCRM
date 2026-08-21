@@ -3,8 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useEventContext } from '../context/EventContext';
 import { Search, Bell, Sun, Moon, LogOut } from 'lucide-react';
 
+import { useAuth } from '../context/AuthContext';
+
 export const Header = () => {
   const { eventLog, theme, toggleTheme } = useEventContext();
+  const { logout, currentUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -13,7 +16,7 @@ export const Header = () => {
   const isRegionalView = currentRoute.startsWith('/regional');
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    logout();
     navigate('/login');
   };
 

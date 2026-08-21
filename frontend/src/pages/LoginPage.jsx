@@ -21,16 +21,24 @@ const parseJwt = (token) => {
   }
 };
 
+import { useAuth } from '../context/AuthContext';
+
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const { login, isLoggingIn, isAuthenticated, currentUser, getRoleDefaultPath } = useAuth();
   const { setActiveRole, theme, toggleTheme, refreshAdminData } = useEventContext();
   const { showToast } = useToast();
 
-  const [username, setUsername] = useState();
-  const [password, setPassword] = useState();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  React.useEffect(() => {
+    if (isAuthenticated && currentUser) {
+      navigate(getRoleDefaultPath(currentUser.role), { replace: true });
+    }
+  }, [isAuthenticated, currentUser, navigate, getRoleDefaultPath]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -39,50 +47,23 @@ export const LoginPage = () => {
       return;
     }
 
-    setIsLoading(true);
     setErrorMsg('');
 
     try {
-      // POST /api/v1/auth/login with exact payload { username, password }
-      const loginData = await apiService.login(username.trim(), password);
-      showToast('🚀 Authentication successful! Loading live role portal...', 'success');
+      const { user } = await login(username.trim(), password);
+      showToast('🚀 Authentication successful! Redirecting to dashboard...', 'success');
 
-      // Decode JWT token to get exact backend role
-      const token = loginData.access_token || localStorage.getItem('token');
-      const decodedToken = token ? parseJwt(token) : null;
-      const backendRole = decodedToken?.role || '';
-
-      // Determine redirect path based on decoded JWT role or username fallback
-      let roleKey = 'admin';
-      let redirectPath = '/admin';
-
-      if (backendRole === 'RM' || username.toLowerCase().includes('rm') || username.toLowerCase().includes('alice') || username.toLowerCase().includes('bob')) {
-        roleKey = 'rm';
-        redirectPath = '/rm';
-      } else if (backendRole === 'BRANCH_MANAGER' || username.toLowerCase().includes('manager') || username.toLowerCase().includes('branch')) {
-        roleKey = 'manager';
-        redirectPath = '/manager';
-      } else if (backendRole === 'REGIONAL_HEAD' || username.toLowerCase().includes('regional') || username.toLowerCase().includes('soham')) {
-        roleKey = 'regional';
-        redirectPath = '/regional';
-      } else if (backendRole === 'ADMIN' || username.toLowerCase().includes('admin')) {
-        roleKey = 'admin';
-        redirectPath = '/admin';
-      }
-
+      const roleKey = user.role === 'RM' ? 'rm' : user.role === 'BRANCH_MANAGER' ? 'manager' : user.role === 'REGIONAL_HEAD' ? 'regional' : 'admin';
       setActiveRole(roleKey);
       await refreshAdminData();
-      navigate(redirectPath);
+
+      const redirectPath = getRoleDefaultPath(user.role);
+      navigate(redirectPath, { replace: true });
     } catch (err) {
       console.error('Login Error:', err);
-      const isAuthFail = err.message?.includes('401') || err.message?.includes('Invalid');
-      const msg = isAuthFail 
-        ? 'Invalid username or password for this account. Please check database credentials.' 
-        : (err.message || 'Authentication failed. Please try again.');
+      const msg = err.detail || err.message || 'Invalid username or password for this account. Please check credentials.';
       setErrorMsg(msg);
       showToast(msg, 'error');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -271,7 +252,7 @@ export const LoginPage = () => {
           {/* Submit Sign In Button */}
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoggingIn}
             style={{
               marginTop: '0.5rem',
               display: 'flex',
@@ -285,12 +266,12 @@ export const LoginPage = () => {
               color: '#fff',
               fontSize: '0.95rem',
               fontWeight: 800,
-              cursor: isLoading ? 'not-allowed' : 'pointer',
+              cursor: isLoggingIn ? 'not-allowed' : 'pointer',
               boxShadow: '0 4px 16px rgba(1, 197, 138, 0.35)',
               transition: 'all 0.2s ease'
             }}
           >
-            {isLoading ? (
+            {isLoggingIn ? (
               <span>Authenticating...</span>
             ) : (
               <>

@@ -52,4 +52,7 @@ class PriorityEngine:
             "intent": int(round(it))
         }
 
+        import logging
+        logging.getLogger(__name__).info(f"[PRIORITY] score={final_score} priority={priority} factors={factors}")
+
         return priority, final_score, factors

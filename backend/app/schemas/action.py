@@ -13,6 +13,11 @@ class ActionType(str, Enum):
     CROSS_SELL = "CROSS_SELL"
     REACTIVATE_CUSTOMER = "REACTIVATE_CUSTOMER"
     SPECIAL_ACHIEVEMENT = "SPECIAL_ACHIEVEMENT"
+    MEETING = "MEETING"
+    PORTFOLIO_REVIEW = "PORTFOLIO_REVIEW"
+    CALL = "CALL"
+    EMAIL = "EMAIL"
+    SMS = "SMS"
 
 class ActionPriority(str, Enum):
     CRITICAL = "CRITICAL"
@@ -49,8 +54,31 @@ class ActionCreate(ActionBase):
 
 class ActionResponse(ActionBase):
     id: str
+    rm_name: Optional[str] = None
+    customer_name: Optional[str] = None
+    lead_name: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+class ScheduleItemResponse(BaseModel):
+    id: str
+    item_type: str = "ACTION"
+    action_type: str
+    priority: str
+    title: str
+    description: Optional[str] = None
+    due_at: datetime
+    formatted_time: str
+    status: str
+    customer_id: Optional[int] = None
+    customer_name: Optional[str] = None
+    lead_id: Optional[int] = None
+    lead_name: Optional[str] = None
+    rm_id: int
+
+    class Config:
+        from_attributes = True
+

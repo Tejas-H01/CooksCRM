@@ -24,8 +24,12 @@ import {
   CheckSquare
 } from 'lucide-react';
 
+import { useAuth } from '../context/AuthContext';
+
 export const Sidebar = () => {
-  const { actions } = useEventContext();
+  const { actions, currentUser: eventUser } = useEventContext();
+  const { currentUser: authUser } = useAuth();
+  const currentUser = authUser || eventUser;
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -35,14 +39,16 @@ export const Sidebar = () => {
   const isRegionalRoute = location.pathname === '/regional';
   const isAdminRoute = location.pathname.startsWith('/admin');
 
+  const userDisplayName = currentUser?.username || 'Authenticated User';
+
   // Active role config object
   const currentWorkspace = isAdminRoute
-    ? { key: 'admin', title: 'ADMIN WORKSPACE', name: 'System Admin', role: 'Overall Admin', accent: 'var(--accent-admin)' }
+    ? { key: 'admin', title: 'ADMIN WORKSPACE', name: userDisplayName, role: 'Overall Admin', accent: 'var(--accent-admin)' }
     : isRegionalRoute
-    ? { key: 'regional', title: 'REGIONAL WORKSPACE', name: 'Sanjay Singhania', role: 'Regional Head', accent: 'var(--accent-regional)' }
+    ? { key: 'regional', title: 'REGIONAL WORKSPACE', name: userDisplayName, role: 'Regional Head', accent: 'var(--accent-regional)' }
     : isManagerRoute
-    ? { key: 'manager', title: 'MANAGER WORKSPACE', name: 'Anita Verma', role: 'Branch Manager', accent: 'var(--accent-manager)' }
-    : { key: 'rm', title: 'RM WORKSPACE', name: 'Rahul Sharma', role: 'Relationship Manager', accent: 'var(--accent-rm)' };
+    ? { key: 'manager', title: 'MANAGER WORKSPACE', name: userDisplayName, role: 'Branch Manager', accent: 'var(--accent-manager)' }
+    : { key: 'rm', title: 'RM WORKSPACE', name: userDisplayName, role: 'Relationship Manager', accent: 'var(--accent-rm)' };
 
   return (
     <aside className="sidebar">

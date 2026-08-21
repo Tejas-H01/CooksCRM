@@ -53,6 +53,8 @@ app.include_router(regional_router, prefix="/api/v1", tags=["Regional"])
 def health_redirect():
     return {"status": "healthy", "service": "crm-backend"}
 
+bg_tasks = []
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("FastAPI CRM Backend starting up...")
@@ -67,6 +69,23 @@ async def startup_event():
         await event_bus.subscribe(event_type.value, EventProcessor.process_event)
     logger.info("EventProcessor subscribed to all EventBus channels.")
 
+    # Start the queue worker in the background
+    from app.core.worker import start_queue_worker
+    import asyncio
+    worker_task = asyncio.create_task(start_queue_worker())
+    bg_tasks.append(worker_task)
+    logger.info("Background queue worker task started.")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("FastAPI CRM Backend shutting down...")
+    import asyncio
+    for task in bg_tasks:
+        task.cancel()
+    if bg_tasks:
+        await asyncio.gather(*bg_tasks, return_exceptions=True)
+        bg_tasks.clear()
+        
+    from app.engine.simulator_engine import simulator_engine
+    await simulator_engine.stop()
+    logger.info("Graceful shutdown complete.")

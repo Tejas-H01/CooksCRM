@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth, getRoleDefaultPath } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { EventProvider } from './context/EventContext';
 import { Sidebar } from './components/Sidebar';
@@ -16,10 +17,22 @@ import { LiveEventsPage } from './pages/LiveEventsPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 
 function ProtectedLayout() {
-  const token = localStorage.getItem('token');
-  if (!token) {
+  const { isAuthenticated, authInitializing, currentUser } = useAuth();
+
+  if (authInitializing) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)', color: 'var(--text-main)', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ width: '36px', height: '36px', border: '3px solid rgba(1, 197, 138, 0.2)', borderTopColor: 'var(--accent-rm)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-muted)' }}>Initializing FinFlow Portal...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+
+  const defaultPath = getRoleDefaultPath(currentUser?.role);
 
   return (
     <div className="app-container">
@@ -28,7 +41,7 @@ function ProtectedLayout() {
         <Header />
         <main className="dashboard-content">
           <Routes>
-            <Route path="/" element={<Navigate to="/admin" replace />} />
+            <Route path="/" element={<Navigate to={defaultPath} replace />} />
             <Route path="/rm" element={<RmDashboard />} />
             <Route path="/manager" element={<ManagerDashboard />} />
             <Route path="/regional" element={<RegionalDashboard />} />
@@ -37,7 +50,7 @@ function ProtectedLayout() {
             <Route path="/admin/users" element={<UserHierarchyPage />} />
             <Route path="/events" element={<LiveEventsPage />} />
             <Route path="/audit-logs" element={<AuditLogsPage />} />
-            <Route path="*" element={<Navigate to="/admin" replace />} />
+            <Route path="*" element={<Navigate to={defaultPath} replace />} />
           </Routes>
         </main>
       </div>
@@ -48,16 +61,18 @@ function ProtectedLayout() {
 
 function App() {
   return (
-    <ToastProvider>
-      <EventProvider>
-        <Router>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/*" element={<ProtectedLayout />} />
-          </Routes>
-        </Router>
-      </EventProvider>
-    </ToastProvider>
+    <AuthProvider>
+      <ToastProvider>
+        <EventProvider>
+          <Router>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/*" element={<ProtectedLayout />} />
+            </Routes>
+          </Router>
+        </EventProvider>
+      </ToastProvider>
+    </AuthProvider>
   );
 }
 

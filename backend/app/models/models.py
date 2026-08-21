@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Numeric, Table, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
@@ -79,11 +80,17 @@ class Lead(Base):
     source = Column(String(100), nullable=True)
     stage = Column(String(50), default="NEW")
     potential_value = Column(Numeric(15, 2), default=0.00)
+    actual_value = Column(Numeric(15, 2), default=0.00)
+    probability = Column(Integer, default=50)
+    expected_close_date = Column(DateTime, nullable=True)
     assigned_rm_id = Column(Integer, ForeignKey("users.id", name="fk_lead_assigned_rm_id"), nullable=True)
     last_contact = Column(DateTime, nullable=True)
     next_follow_up = Column(DateTime, nullable=True)
     sla_deadline = Column(DateTime, nullable=True)
     status = Column(String(50), default="OPEN")
+    reason = Column(String(500), nullable=True)
+    notes = Column(String(500), nullable=True)
+    trigger_event_id = Column(String(36), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -140,6 +147,18 @@ class Action(Base):
     customer = relationship("Customer", back_populates="actions")
     lead = relationship("Lead", back_populates="actions")
     source_event = relationship("Event", back_populates="actions")
+
+    @property
+    def rm_name(self) -> Optional[str]:
+        return self.rm.username if self.rm else None
+
+    @property
+    def customer_name(self) -> Optional[str]:
+        return self.customer.name if self.customer else None
+
+    @property
+    def lead_name(self) -> Optional[str]:
+        return self.lead.name if self.lead else None
 
 
 class Target(Base):

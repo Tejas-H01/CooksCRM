@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
-from app.models.models import Action
+from app.models.models import Action, Lead
 import logging
 
 logger = logging.getLogger(__name__)
@@ -96,3 +96,87 @@ class ActionService:
             db.refresh(action)
             logger.info(f"ActionService: Recorded outcome for Action {action_id}")
         return action
+
+    @staticmethod
+    def get_schedule_for_rm(db: Session, rm_id: int, date_str: Optional[str] = None) -> List[Dict[str, Any]]:
+        if date_str:
+            try:
+                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                target_date = datetime.utcnow().date()
+        else:
+            target_date = datetime.utcnow().date()
+
+        start_dt = datetime.combine(target_date, datetime.min.time())
+        end_dt = datetime.combine(target_date, datetime.max.time())
+
+        # Actions due on or before end_dt (due today or overdue pending/in_progress)
+        actions = db.query(Action).filter(
+            Action.rm_id == rm_id,
+            Action.due_at <= end_dt
+        ).all()
+
+        schedule_items = []
+
+        for a in actions:
+            is_due_today = (start_dt <= a.due_at <= end_dt)
+            is_overdue_pending = (a.due_at < start_dt and a.status in ["PENDING", "IN_PROGRESS"])
+            
+            if is_due_today or is_overdue_pending:
+                c_name = a.customer.name if a.customer else (a.lead.name if a.lead else "Customer")
+                l_name = a.lead.name if a.lead else None
+                formatted_time = a.due_at.strftime("%I:%M %p")
+                if is_overdue_pending:
+                    formatted_time += " (Overdue)"
+                
+                schedule_items.append({
+                    "id": a.id,
+                    "item_type": "ACTION",
+                    "action_type": a.action_type,
+                    "priority": a.priority,
+                    "title": a.title,
+                    "description": a.description,
+                    "due_at": a.due_at,
+                    "formatted_time": formatted_time,
+                    "status": a.status,
+                    "customer_id": a.customer_id,
+                    "customer_name": c_name,
+                    "lead_id": a.lead_id,
+                    "lead_name": l_name,
+                    "rm_id": a.rm_id
+                })
+
+        # Open Leads with next_follow_up today
+        leads = db.query(Lead).filter(
+            Lead.assigned_rm_id == rm_id,
+            Lead.status == "OPEN",
+            Lead.next_follow_up >= start_dt,
+            Lead.next_follow_up <= end_dt
+        ).all()
+
+        action_lead_ids = {a.lead_id for a in actions if a.lead_id}
+
+        for l in leads:
+            if l.id not in action_lead_ids:
+                c_name = l.customer.name if l.customer else l.name
+                formatted_time = l.next_follow_up.strftime("%I:%M %p") if l.next_follow_up else "Today"
+                schedule_items.append({
+                    "id": f"lead_sch_{l.id}",
+                    "item_type": "LEAD_FOLLOW_UP",
+                    "action_type": "FOLLOW_UP",
+                    "priority": "HIGH" if (l.sla_deadline and l.sla_deadline < datetime.utcnow()) else "MEDIUM",
+                    "title": f"Follow-up with {l.name}",
+                    "description": f"Scheduled follow-up for {l.stage} lead",
+                    "due_at": l.next_follow_up or datetime.utcnow(),
+                    "formatted_time": formatted_time,
+                    "status": "PENDING",
+                    "customer_id": l.customer_id,
+                    "customer_name": c_name,
+                    "lead_id": l.id,
+                    "lead_name": l.name,
+                    "rm_id": rm_id
+                })
+
+        schedule_items.sort(key=lambda x: x["due_at"])
+        return schedule_items
+

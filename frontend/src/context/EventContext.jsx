@@ -51,7 +51,7 @@ export const EventProvider = ({ children }) => {
   const [theme, setTheme] = useState(() => localStorage.getItem('FINFLOW_THEME') || 'dark');
 
   // Application Data States
-  const [leads, setLeads] = useState(initialLeads);
+  const [leads, setLeads] = useState([]);
   const [actions, setActions] = useState(initialActions);
   const [rms, setRms] = useState(initialRms);
   const [branches, setBranches] = useState(initialBranches);
@@ -63,15 +63,20 @@ export const EventProvider = ({ children }) => {
   const [adminOverview, setAdminOverview] = useState(null);
   const [isLoadingAdmin, setIsLoadingAdmin] = useState(false);
   const [rmPerformance, setRmPerformance] = useState(null);
+  const [schedule, setSchedule] = useState([]);
+  const [opportunitySuggestions, setOpportunitySuggestions] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [managerPerformance, setManagerPerformance] = useState(null);
+  const [managerLeads, setManagerLeads] = useState([]);
+  const [managerBranch, setManagerBranch] = useState(null);
   const [regionalPerformance, setRegionalPerformance] = useState([]);
+  const [regionalDashboard, setRegionalDashboard] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
 
   // Active selections
-  const [selectedLead, setSelectedLead] = useState(initialLeads[0]);
-  const [eventLog, setEventLog] = useState([
-    { id: 1, type: 'PAYIN_EVENT', source: 'CoreBanking', status: 'PROCESSED', timestamp: '10 mins ago' },
-    { id: 2, type: 'HIGH_INTENT', source: 'WebAnalytics', status: 'PROCESSED', timestamp: '25 mins ago' }
-  ]);
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [eventLog, setEventLog] = useState([]);
+  const [simulatorStats, setSimulatorStats] = useState({ is_simulator_running: false, queue_depth: 0, active_processing: 0, processed_count: 0, failed_count: 0, total_queued: 0 });
 
   // Apply Theme attribute to document element
   useEffect(() => {
@@ -97,7 +102,7 @@ export const EventProvider = ({ children }) => {
       if (overview) setAdminOverview(overview);
 
       const liveUsers = await apiService.fetchAdminUsers();
-      if (Array.isArray(liveUsers) && liveUsers.length > 0) setUsers(liveUsers);
+      if (Array.isArray(liveUsers)) setUsers(liveUsers);
 
       const liveTeams = await apiService.fetchAdminTeams();
       if (Array.isArray(liveTeams) && liveTeams.length > 0) setBranches(liveTeams);
@@ -111,16 +116,14 @@ export const EventProvider = ({ children }) => {
       const roles = await apiService.fetchAdminRoles();
       if (Array.isArray(roles) && roles.length > 0) setRolesPermissions(roles);
     } catch (err) {
-      if (!err.message?.includes('401')) {
-        console.warn('Live backend fetch fallback:', err.message);
-      }
+      console.warn("Failed to load live admin data:", err.message);
     } finally {
       setIsLoadingAdmin(false);
     }
   };
 
   const loadRoleData = async (roleVal = activeRole) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('finflow_access_token') || localStorage.getItem('token');
     if (!token) return;
 
     const decoded = parseJwt(token);
@@ -134,35 +137,49 @@ export const EventProvider = ({ children }) => {
 
     try {
       if (roleVal === 'rm') {
-        const rmActions = await apiService.fetchRmActions();
+        const [profile, rmActions, rmLeads, rmPerf, rmSch, rmSugg, rmCusts] = await Promise.all([
+          apiService.fetchCurrentUser().catch(() => null),
+          apiService.fetchRmActions().catch(() => null),
+          apiService.fetchRmLeads().catch(() => null),
+          apiService.fetchRmPerformance().catch(() => null),
+          apiService.fetchRmSchedule().catch(() => null),
+          apiService.fetchRmOpportunitySuggestions().catch(() => null),
+          apiService.fetchRmCustomers().catch(() => null)
+        ]);
+
+        if (profile) setCurrentUser(profile);
         if (Array.isArray(rmActions)) setActions(rmActions);
-
-        const rmLeads = await apiService.fetchRmLeads();
         if (Array.isArray(rmLeads)) setLeads(rmLeads);
-        
-        const rmPerf = await apiService.fetchRmPerformance();
         if (rmPerf) setRmPerformance(rmPerf);
+        if (Array.isArray(rmSch)) setSchedule(rmSch);
+        if (Array.isArray(rmSugg)) setOpportunitySuggestions(rmSugg);
+        if (Array.isArray(rmCusts)) setCustomers(rmCusts);
       } else if (roleVal === 'manager') {
-        const mgrRms = await apiService.fetchManagerRms();
-        if (Array.isArray(mgrRms) && mgrRms.length > 0) setRms(mgrRms);
-        
-        const mgrActions = await apiService.fetchManagerActions();
-        if (Array.isArray(mgrActions)) setActions(mgrActions);
-        
-        const mgrPerf = await apiService.fetchManagerPerformance();
-        if (mgrPerf) setManagerPerformance(mgrPerf);
+        const [profile, mgrBranch, mgrRms, mgrActions, mgrPerf, mgrAlerts, mgrLeads] = await Promise.all([
+          apiService.fetchCurrentUser().catch(() => null),
+          apiService.fetchManagerBranch().catch(() => null),
+          apiService.fetchManagerRms().catch(() => null),
+          apiService.fetchManagerActions().catch(() => null),
+          apiService.fetchManagerPerformance().catch(() => null),
+          apiService.fetchManagerAlerts().catch(() => null),
+          apiService.fetchManagerLeads().catch(() => null)
+        ]);
 
-        const mgrAlerts = await apiService.fetchManagerAlerts();
+        if (profile) setCurrentUser(profile);
+        if (mgrBranch) setManagerBranch(mgrBranch);
+        if (Array.isArray(mgrRms) && mgrRms.length > 0) setRms(mgrRms);
+        if (Array.isArray(mgrActions)) setActions(mgrActions);
+        if (mgrPerf) setManagerPerformance(mgrPerf);
         if (Array.isArray(mgrAlerts)) setSystemAlerts(mgrAlerts);
+        if (Array.isArray(mgrLeads)) setManagerLeads(mgrLeads);
       } else if (roleVal === 'regional') {
-        const regBranches = await apiService.fetchRegionalBranches();
-        if (Array.isArray(regBranches) && regBranches.length > 0) setBranches(regBranches);
-        
-        const regPerf = await apiService.fetchRegionalPerformance();
-        if (Array.isArray(regPerf)) setRegionalPerformance(regPerf);
-        
-        const regAlerts = await apiService.fetchRegionalAlerts();
-        if (Array.isArray(regAlerts)) setSystemAlerts(regAlerts);
+        const [profile, regDash] = await Promise.all([
+          apiService.fetchCurrentUser().catch(() => null),
+          apiService.fetchRegionalDashboard().catch(() => null)
+        ]);
+
+        if (profile) setCurrentUser(profile);
+        if (regDash) setRegionalDashboard(regDash);
       } else if (roleVal === 'admin') {
         await loadAdminData();
       }
@@ -179,39 +196,92 @@ export const EventProvider = ({ children }) => {
 
   // Action complete handler
   const completeAction = async (actionId, outcome) => {
-    await apiService.completeAction(actionId, { outcome });
-    setActions((prev) => prev.filter((a) => a.id !== actionId));
-    
-    setAuditLogs((prev) => [
-      {
-        id: `log-${Date.now()}`,
-        timestamp: 'Just now',
-        user: 'Rahul Sharma (RM)',
-        action: 'ACTION_COMPLETED',
-        details: `Completed action #${actionId} - Outcome: ${outcome}`
-      },
-      ...prev
-    ]);
+    try {
+      // Backend expects outcome as a Dict (or null), not a string
+      const outcomePayload = typeof outcome === 'string' ? { notes: outcome } : (outcome || {});
+      await apiService.completeAction(actionId, { outcome: outcomePayload });
+      setActions((prev) => prev.filter((a) => a.id !== actionId));
+      setSchedule((prev) => prev.filter((s) => s.id !== actionId));
+      
+      setAuditLogs((prev) => [
+        {
+          id: `log-${Date.now()}`,
+          timestamp: 'Just now',
+          user: 'Rahul Sharma (RM)',
+          action: 'ACTION_COMPLETED',
+          details: `Completed action #${actionId}`
+        },
+        ...prev
+      ]);
 
-    showToast(`✅ Action #${actionId} marked completed & logged to audit trail!`, 'success');
+      showToast(`✅ Action #${actionId} marked completed & logged to audit trail!`, 'success');
+    } catch (err) {
+      showToast(`❌ Failed to complete action: ${err.message}`, 'error');
+    }
   };
 
   // Action snooze handler
-  const snoozeAction = (actionId, hours) => {
-    setActions((prev) =>
-      prev.map((a) =>
-        a.id === actionId
-          ? { ...a, dueText: `Snoozed for ${hours}h`, urgencyScore: Math.max(10, a.urgencyScore - 30) }
-          : a
-      )
-    );
-    showToast(`⏰ Action #${actionId} snoozed for ${hours} hours.`, 'info');
+  const snoozeAction = async (actionId, hours) => {
+    try {
+      await apiService.snoozeAction(actionId, hours * 60);
+      setActions((prev) =>
+        prev.map((a) =>
+          a.id === actionId
+            ? { ...a, dueText: `Snoozed for ${hours}h`, urgencyScore: Math.max(10, a.urgencyScore - 30) }
+            : a
+        )
+      );
+      const updatedSch = await apiService.fetchRmSchedule();
+      if (Array.isArray(updatedSch)) setSchedule(updatedSch);
+      showToast(`⏰ Action #${actionId} snoozed for ${hours} hours.`, 'info');
+    } catch (err) {
+      showToast(`❌ Failed to snooze action: ${err.message}`, 'error');
+    }
   };
 
   // Reassign action
-  const reassignAction = (actionId, newRmName) => {
-    setActions((prev) => prev.filter((a) => a.id !== actionId));
-    showToast(`🔄 Action #${actionId} reassigned to ${newRmName}.`, 'info');
+  const reassignAction = async (actionId, newRmName) => {
+    try {
+      // In a real app we would map newRmName to newRmId, hardcoding id=2 for Neha Iyer (from mockRms)
+      await apiService.reassignAction(actionId, 2); 
+      setActions((prev) => prev.filter((a) => a.id !== actionId));
+      showToast(`🔄 Action #${actionId} reassigned to ${newRmName}.`, 'info');
+    } catch (err) {
+      showToast(`❌ Failed to reassign action: ${err.message}`, 'error');
+    }
+  };
+
+  const reassignManagerLead = async (leadId, newRmId, reason = '') => {
+    try {
+      await apiService.reassignManagerLead(leadId, newRmId, reason);
+      showToast(`🔄 Lead #${leadId} successfully reassigned!`, 'success');
+      await loadRoleData('manager');
+    } catch (err) {
+      showToast(`❌ Failed to reassign lead: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const reassignManagerAction = async (actionId, newRmId, reason = '') => {
+    try {
+      await apiService.reassignManagerAction(actionId, newRmId, reason);
+      showToast(`🔄 Action successfully reassigned!`, 'success');
+      await loadRoleData('manager');
+    } catch (err) {
+      showToast(`❌ Failed to reassign action: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const resolveManagerAction = async (actionId, notes = '') => {
+    try {
+      await apiService.resolveManagerAction(actionId, notes);
+      showToast(`✅ Action successfully resolved by Branch Manager!`, 'success');
+      await loadRoleData('manager');
+    } catch (err) {
+      showToast(`❌ Failed to resolve action: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
   // POST /admin/users - Create User
@@ -277,17 +347,31 @@ export const EventProvider = ({ children }) => {
     showToast(`Notice: Dynamic permission editing is out of scope. Displaying static RBAC matrix.`, 'info');
   };
 
-  // POST /admin/events/{id}/retry - Retry Failed Event
-  const retryFailedEvent = async (eventId) => {
-    await apiService.retryAdminFailedEvent(eventId);
-    setFailedEvents((prev) => prev.filter((e) => e.id !== eventId));
-    showToast(`🔄 Event #${eventId} retried via POST /admin/events/${eventId}/retry!`, 'success');
-    
-    // Refresh failed event list from live backend
-    const updatedFailed = await apiService.fetchAdminFailedEvents();
-    if (Array.isArray(updatedFailed)) {
-      setFailedEvents(updatedFailed);
-    }
+  const acceptOpportunitySuggestion = async (leadId) => {
+    await apiService.acceptOpportunitySuggestion(leadId);
+    showToast('✨ Opportunity suggestion accepted!', 'success');
+    await refreshUserData();
+  };
+
+  const dismissOpportunitySuggestion = async (leadId) => {
+    await apiService.dismissOpportunitySuggestion(leadId);
+    showToast('Suggestion dismissed.', 'info');
+    await refreshUserData();
+  };
+
+  const createRmOpportunity = async (opportunityData) => {
+    const newOpp = await apiService.createRmOpportunity(opportunityData);
+    showToast('🚀 New opportunity created successfully!', 'success');
+    await refreshUserData();
+    return newOpp;
+  };
+
+  const createRmCustomer = async (customerData) => {
+    const newCust = await apiService.createRmCustomer(customerData);
+    setCustomers((prev) => [...prev, newCust]);
+    showToast(`👤 Customer '${newCust.name}' created successfully!`, 'success');
+    await refreshUserData();
+    return newCust;
   };
 
   const refreshUserData = async () => {
@@ -303,6 +387,66 @@ export const EventProvider = ({ children }) => {
 
     if (roleKey) {
       await loadRoleData(roleKey);
+    }
+  };
+
+  const refreshSimulatorStatsAndEvents = async () => {
+    try {
+      const stats = await apiService.fetchSimulatorStats();
+      if (stats) setSimulatorStats(stats);
+      const evts = await apiService.fetchEvents();
+      if (Array.isArray(evts)) {
+        setEventLog(evts.map(e => ({
+          id: e.id,
+          eventType: e.event_type,
+          description: `Event type ${e.event_type} received from ${e.source || 'external source'} for entity ${e.entity_type}:${e.entity_id}`,
+          timestamp: new Date(e.occurred_at || e.created_at).toLocaleTimeString(),
+          status: e.processed_at ? 'processed' : 'pending'
+        })));
+      }
+    } catch (e) {
+      console.warn("Error refreshing simulator stats and events:", e.message);
+    }
+  };
+
+  const startSimulation = async () => {
+    await apiService.startSimulator();
+    await refreshSimulatorStatsAndEvents();
+  };
+
+  const stopSimulation = async () => {
+    await apiService.stopSimulator();
+    await refreshSimulatorStatsAndEvents();
+  };
+
+  const triggerSimulationJourney = async (blueprintName, customerId = "1") => {
+    await apiService.triggerJourney(blueprintName, customerId);
+    await refreshSimulatorStatsAndEvents();
+  };
+
+  // Unified 3-second polling interval for events, simulator stats, and active role workspace data
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const pollAll = async () => {
+      await refreshSimulatorStatsAndEvents();
+      await refreshUserData();
+    };
+
+    pollAll();
+    const interval = setInterval(pollAll, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const resolveRegionalAction = async (actionId, notes) => {
+    try {
+      const res = await apiService.resolveRegionalAction(actionId, notes);
+      await loadRoleData('regional');
+      return res;
+    } catch (err) {
+      console.error("Failed to resolve regional action:", err);
+      throw err;
     }
   };
 
@@ -325,11 +469,20 @@ export const EventProvider = ({ children }) => {
         adminOverview,
         isLoadingAdmin,
         rmPerformance,
+        schedule,
         managerPerformance,
+        managerLeads,
+        managerBranch,
         regionalPerformance,
+        regionalDashboard,
         selectedLead,
         setSelectedLead,
         eventLog,
+        simulatorStats,
+        refreshSimulatorStatsAndEvents,
+        startSimulation,
+        stopSimulation,
+        triggerSimulationJourney,
         completeAction,
         snoozeAction,
         reassignAction,
@@ -339,8 +492,17 @@ export const EventProvider = ({ children }) => {
         updateUserRole,
         addTeam,
         updateTeam,
-        updateRolePermissions,
-        retryFailedEvent,
+        opportunitySuggestions,
+        customers,
+        acceptOpportunitySuggestion,
+        dismissOpportunitySuggestion,
+        createRmOpportunity,
+        createRmCustomer,
+        currentUser,
+        reassignManagerLead,
+        reassignManagerAction,
+        resolveManagerAction,
+        resolveRegionalAction,
         refreshAdminData: refreshUserData
       }}
     >

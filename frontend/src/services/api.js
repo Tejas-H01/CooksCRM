@@ -12,6 +12,44 @@ import {
   initialIntegrations
 } from '../data/mockData';
 
+// Schema Mapping Adapters
+const mapActionResponse = (apiAction) => {
+  let priorityStr = "Medium Priority";
+  if (apiAction.priority === "HIGH" || apiAction.priority === "CRITICAL") priorityStr = "High Priority";
+  else if (apiAction.priority === "LOW") priorityStr = "Low Priority";
+
+  const due = new Date(apiAction.due_at);
+  const now = new Date();
+  const diffHours = (due - now) / (1000 * 60 * 60);
+  let dueText = "Due Later";
+  if (diffHours < 0) dueText = "Due Now (SLA Overdue)";
+  else if (diffHours < 24) dueText = `Due in ${Math.round(diffHours)} hours`;
+
+  return {
+    ...apiAction,
+    leadName: apiAction.lead_name || `Lead #${apiAction.lead_id || 'Unknown'}`,
+    priority: priorityStr,
+    urgencyScore: apiAction.score || 0,
+    dueText: dueText,
+    suggestedMessage: apiAction.suggested_message || `Hi, following up on our recent communication.`
+  };
+};
+
+const mapLeadResponse = (apiLead) => {
+  return {
+    ...apiLead,
+    potentialValue: apiLead.potential_value || 0,
+    lastContactDaysAgo: 0,
+    conversionProbability: 50,
+    nextFollowup: "Tomorrow",
+    bestContactTime: "Afternoon",
+    activityTimeline: [],
+    notes: [],
+    tags: [apiLead.stage || "NEW"],
+    intentScore: 50
+  };
+};
+
 const DEFAULT_BASE_URL = '/api/v1'; // Uses Vite Proxy to avoid CORS blocks
 
 let storedUrl = localStorage.getItem('FINFLOW_API_URL');
@@ -33,12 +71,18 @@ export const setApiConfig = (newConfig) => {
   localStorage.setItem('FINFLOW_USE_BACKEND', apiConfig.useBackend ? 'true' : 'false');
 };
 
+const TOKEN_KEY = 'finflow_access_token';
+
+const getToken = () => {
+  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem('token');
+};
+
 const handleFetch = async (endpoint, options = {}) => {
   if (!apiConfig.useBackend) {
     throw new Error('Backend mode disabled - using mock data');
   }
 
-  const token = localStorage.getItem('token');
+  const token = getToken();
   const primaryUrl = `${apiConfig.baseUrl}${endpoint}`;
   const headers = {
     'Content-Type': 'application/json',
@@ -50,12 +94,22 @@ const handleFetch = async (endpoint, options = {}) => {
     const response = await fetch(primaryUrl, { ...options, headers });
 
     if (response.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem('token');
+      if (typeof window !== 'undefined' && !endpoint.includes('/auth/login')) {
+        window.dispatchEvent(new CustomEvent('finflow:unauthorized'));
+      }
       throw new Error('401 Unauthorized');
     }
 
     if (!response.ok) {
-      throw new Error(`FastAPI Request Failed: ${response.status} ${response.statusText}`);
+      const errText = await response.text();
+      let errDetail = `${response.status} ${response.statusText}`;
+      try {
+        const json = JSON.parse(errText);
+        if (json.detail) errDetail = json.detail;
+      } catch (e) {}
+      throw new Error(errDetail);
     }
     return await response.json();
   } catch (err) {
@@ -78,42 +132,55 @@ export const apiService = {
   async login(username, password) {
     if (apiConfig.useBackend) {
       const url = `${apiConfig.baseUrl}/auth/login`;
+      let response;
       try {
-        const response = await fetch(url, {
+        response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.access_token) {
-            localStorage.setItem('token', data.access_token);
-          }
-          return data;
-        }
-
-        if (response.status === 401) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || 'Invalid username or password');
-        }
-
-        throw new Error(`Authentication failed with status ${response.status}`);
       } catch (err) {
-        if (err.message === 'Invalid username or password' || err.message?.includes('401')) {
-          throw err;
-        }
-        console.warn('FastAPI login server unavailable, using offline fallback:', err.message);
+        // Network error or 502 (Proxy error)
+        throw new Error(`Backend unavailable: ${err.message}`);
       }
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.access_token) {
+          localStorage.setItem(TOKEN_KEY, data.access_token);
+          localStorage.setItem('token', data.access_token);
+        }
+        return data;
+      }
+
+      if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Invalid username or password');
+      }
+
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || `Authentication failed with status ${response.status}`);
     }
 
-    // Offline / Mock Fallback Login
+    // Offline / Mock Fallback Login (ONLY runs if apiConfig.useBackend is explicitly false)
     if (username && password) {
       const mockToken = "mock_jwt_token_" + Date.now();
+      localStorage.setItem(TOKEN_KEY, mockToken);
       localStorage.setItem('token', mockToken);
-      return { access_token: mockToken, token_type: "bearer", username };
+      return { 
+        access_token: mockToken, 
+        token_type: "bearer", 
+        user: { id: 999, username, email: `${username}@crm.com`, role: 'ADMIN', is_active: true } 
+      };
     }
     throw new Error('Please enter username and password');
+  },
+
+  async fetchMe() {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/auth/me');
+    }
+    return null;
   },
 
   // =========================================
@@ -383,30 +450,93 @@ export const apiService = {
   // OTHER DASHBOARD APIS (RM, MANAGER, REGIONAL)
   // =========================================
   async fetchRmActions() {
-    try {
-      if (apiConfig.useBackend) return await handleFetch('/rm/me/actions');
-    } catch (e) {
-      console.warn("FastAPI RM actions offline, using mock:", e.message);
+    if (apiConfig.useBackend) {
+      const data = await handleFetch('/rm/me/actions');
+      return data.map(mapActionResponse);
     }
     return initialActions;
   },
 
-  async fetchRmLeads() {
-    try {
-      if (apiConfig.useBackend) return await handleFetch('/rm/me/leads');
-    } catch (e) {
-      console.warn("FastAPI RM leads offline, using mock:", e.message);
+  async fetchCurrentUser() {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/auth/me');
     }
-    return initialLeads;
+    return null;
+  },
+
+  async fetchRmLeads() {
+    if (apiConfig.useBackend) {
+      const data = await handleFetch('/rm/me/leads');
+      return data.map(mapLeadResponse);
+    }
+    return [];
   },
 
   async fetchRmPerformance() {
-    try {
-      if (apiConfig.useBackend) return await handleFetch('/rm/me/performance');
-    } catch (e) {
-      console.warn("FastAPI RM performance offline:", e.message);
+    if (apiConfig.useBackend) {
+      return await handleFetch('/rm/me/performance');
     }
     return null;
+  },
+
+  async fetchRmCustomers() {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/rm/me/customers');
+    }
+    return [];
+  },
+
+  async createRmCustomer(customerData) {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/rm/me/customers', {
+        method: 'POST',
+        body: JSON.stringify(customerData)
+      });
+    }
+    return { id: Date.now(), ...customerData };
+  },
+
+  async fetchRmSchedule(dateStr) {
+    if (apiConfig.useBackend) {
+      const endpoint = dateStr ? `/rm/me/schedule?date=${dateStr}` : '/rm/me/schedule';
+      return await handleFetch(endpoint);
+    }
+    return [];
+  },
+
+  async fetchRmOpportunitySuggestions() {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/rm/me/opportunity-suggestions');
+    }
+    return [];
+  },
+
+  async acceptOpportunitySuggestion(leadId) {
+    if (apiConfig.useBackend) {
+      return await handleFetch(`/rm/me/opportunity-suggestions/${leadId}/accept`, {
+        method: 'POST'
+      });
+    }
+    return { id: leadId, status: 'OPEN' };
+  },
+
+  async dismissOpportunitySuggestion(leadId) {
+    if (apiConfig.useBackend) {
+      return await handleFetch(`/rm/me/opportunity-suggestions/${leadId}/dismiss`, {
+        method: 'POST'
+      });
+    }
+    return { id: leadId, status: 'DISMISSED' };
+  },
+
+  async createRmOpportunity(opportunityData) {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/rm/me/opportunities', {
+        method: 'POST',
+        body: JSON.stringify(opportunityData)
+      });
+    }
+    return { id: Date.now(), ...opportunityData, status: 'OPEN' };
   },
 
   async fetchManagerBranch() {
@@ -451,7 +581,83 @@ export const apiService = {
     } catch (e) {
       console.warn("FastAPI Manager alerts offline:", e.message);
     }
-    return initialSystemAlerts;
+    return [];
+  },
+
+  async fetchManagerLeads() {
+    try {
+      if (apiConfig.useBackend) return await handleFetch('/manager/leads');
+    } catch (e) {
+      console.warn("FastAPI Manager leads offline:", e.message);
+    }
+    return [];
+  },
+
+  async fetchManagerRmDetail(rmId) {
+    try {
+      if (apiConfig.useBackend) return await handleFetch(`/manager/rms/${rmId}/detail`);
+    } catch (e) {
+      console.warn("FastAPI Manager RM detail offline:", e.message);
+    }
+    return null;
+  },
+
+  async reassignManagerLead(leadId, newRmId, reason = '') {
+    if (apiConfig.useBackend) {
+      return await handleFetch(`/manager/leads/${leadId}/reassign`, {
+        method: 'POST',
+        body: JSON.stringify({ new_rm_id: newRmId, reason })
+      });
+    }
+    return { id: leadId, assigned_rm_id: newRmId };
+  },
+
+  async reassignManagerAction(actionId, newRmId, reason = '') {
+    if (apiConfig.useBackend) {
+      return await handleFetch(`/manager/actions/${actionId}/reassign`, {
+        method: 'POST',
+        body: JSON.stringify({ new_rm_id: newRmId, reason })
+      });
+    }
+    return { id: actionId, rm_id: newRmId };
+  },
+
+  async resolveManagerAction(actionId, notes = '') {
+    if (apiConfig.useBackend) {
+      return await handleFetch(`/manager/actions/${actionId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ notes })
+      });
+    }
+    return { id: actionId, status: 'COMPLETED' };
+  },
+
+  async fetchRegionalDashboard() {
+    try {
+      if (apiConfig.useBackend) return await handleFetch('/regional/dashboard');
+    } catch (e) {
+      console.warn("FastAPI Regional dashboard offline:", e.message);
+    }
+    return null;
+  },
+
+  async fetchRegionalBranchDetail(branchId) {
+    try {
+      if (apiConfig.useBackend) return await handleFetch(`/regional/branches/${branchId}`);
+    } catch (e) {
+      console.warn("FastAPI Regional branch detail offline:", e.message);
+    }
+    return null;
+  },
+
+  async resolveRegionalAction(actionId, notes = '') {
+    if (apiConfig.useBackend) {
+      return await handleFetch(`/regional/actions/${actionId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ notes })
+      });
+    }
+    return { id: actionId, status: 'COMPLETED' };
   },
 
   async fetchRegionalBranches() {
@@ -460,7 +666,7 @@ export const apiService = {
     } catch (e) {
       console.warn("FastAPI Regional branches offline:", e.message);
     }
-    return initialBranches;
+    return [];
   },
 
   async fetchRegionalPerformance() {
@@ -474,11 +680,11 @@ export const apiService = {
 
   async fetchRegionalAlerts() {
     try {
-      if (apiConfig.useBackend) return await handleFetch('/regional/alerts');
+      if (apiConfig.useBackend) return await handleFetch('/regional/risk');
     } catch (e) {
       console.warn("FastAPI Regional alerts offline:", e.message);
     }
-    return initialSystemAlerts;
+    return [];
   },
 
   async fetchRegionalAchievements() {
@@ -530,16 +736,99 @@ export const apiService = {
   },
 
   async completeAction(actionId, outcomeData) {
+    if (apiConfig.useBackend) {
+      const data = await handleFetch(`/actions/${actionId}/complete`, {
+        method: 'POST',
+        body: JSON.stringify(outcomeData)
+      });
+      return mapActionResponse(data);
+    }
+    return { success: true, id: actionId };
+  },
+
+  async snoozeAction(actionId, minutes) {
+    if (apiConfig.useBackend) {
+      const data = await handleFetch(`/actions/${actionId}/snooze`, {
+        method: 'POST',
+        body: JSON.stringify({ minutes })
+      });
+      return mapActionResponse(data);
+    }
+    return { success: true, id: actionId };
+  },
+
+  async reassignAction(actionId, newRmId) {
+    if (apiConfig.useBackend) {
+      const data = await handleFetch(`/actions/${actionId}/reassign`, {
+        method: 'POST',
+        body: JSON.stringify({ new_rm_id: newRmId })
+      });
+      return mapActionResponse(data);
+    }
+    return { success: true, id: actionId };
+  },
+
+  async recordOutcome(actionId, outcome) {
+    if (apiConfig.useBackend) {
+      const data = await handleFetch(`/actions/${actionId}/outcome`, {
+        method: 'POST',
+        body: JSON.stringify({ outcome })
+      });
+      return mapActionResponse(data);
+    }
+    return { success: true, id: actionId };
+  },
+
+  async fetchSimulatorStats() {
     try {
       if (apiConfig.useBackend) {
-        return await handleFetch(`/rm/actions/${actionId}/complete`, {
-          method: 'POST',
-          body: JSON.stringify(outcomeData)
-        });
+        return await handleFetch('/simulator/stats');
       }
-    } catch (err) {
-      console.warn('FastAPI complete action failed:', err.message);
+    } catch (e) {
+      console.warn("Simulator stats offline:", e.message);
     }
-    return { success: true, actionId };
+    return {
+      is_simulator_running: false,
+      queue_depth: 0,
+      active_processing: 0,
+      processed_count: 42,
+      failed_count: 0,
+      total_queued: 42
+    };
+  },
+
+  async startSimulator() {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/simulator/start', { method: 'POST' });
+    }
+    return { success: true };
+  },
+
+  async stopSimulator() {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/simulator/stop', { method: 'POST' });
+    }
+    return { success: true };
+  },
+
+  async triggerJourney(blueprintName, customerId = "1") {
+    if (apiConfig.useBackend) {
+      return await handleFetch(`/simulator/journey/${blueprintName}?customer_id=${customerId}`, { method: 'POST' });
+    }
+    return { success: true };
+  },
+
+  async fetchEvents() {
+    try {
+      if (apiConfig.useBackend) {
+        return await handleFetch('/events');
+      }
+    } catch (e) {
+      console.warn("Fetch events offline:", e.message);
+    }
+    return [
+      { id: "evt-1", event_type: "WEBSITE_VISIT", entity_type: "CUSTOMER", entity_id: "1", payload: {}, occurred_at: new Date().toISOString(), created_at: new Date().toISOString(), idempotency_key: "idemp-1" },
+      { id: "evt-2", event_type: "PRODUCT_VIEW", entity_type: "CUSTOMER", entity_id: "1", payload: {}, occurred_at: new Date().toISOString(), created_at: new Date().toISOString(), idempotency_key: "idemp-2" }
+    ];
   }
 };
