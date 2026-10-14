@@ -124,3 +124,5 @@ class RegionalDashboardResponse(BaseModel):
     high_value_opportunities: List[ManagerLeadResponse]
     actions: List[ActionResponse]
     recognition: List[Dict[str, Any]]
+    benchmarking_matrix: List[Dict[str, Any]] = []
+    product_intelligence: List[Dict[str, Any]] = []

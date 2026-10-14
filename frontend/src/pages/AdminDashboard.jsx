@@ -492,7 +492,7 @@ export const AdminDashboard = () => {
                   <input
                     type="email"
                     required
-                    placeholder="e.g. sanjay@finflow.com"
+                    placeholder="e.g. sanjay@salesorbit.com"
                     value={regForm.email}
                     onChange={(e) => setRegForm({ ...regForm, email: e.target.value })}
                     style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', background: 'var(--input-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-main)' }}

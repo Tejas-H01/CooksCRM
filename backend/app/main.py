@@ -12,6 +12,7 @@ from app.api.admin import router as admin_router
 from app.api.rm import router as rm_router
 from app.api.manager import router as manager_router
 from app.api.regional import router as regional_router
+from app.api.ai import router as ai_router
 
 # Setup logging
 logging.basicConfig(
@@ -47,6 +48,7 @@ app.include_router(admin_router, prefix="/api/v1", tags=["Admin"])
 app.include_router(rm_router, prefix="/api/v1", tags=["RM"])
 app.include_router(manager_router, prefix="/api/v1", tags=["Manager"])
 app.include_router(regional_router, prefix="/api/v1", tags=["Regional"])
+app.include_router(ai_router, prefix="/api/v1", tags=["AI Assistant"])
 
 # Root and legacy health endpoint (GET /health)
 @app.get("/health", tags=["Health"])

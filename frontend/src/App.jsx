@@ -6,6 +6,7 @@ import { EventProvider } from './context/EventContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { EventSimulatorModal } from './components/EventSimulatorModal';
+import { SalesOrbitAIChatbot } from './components/SalesOrbitAIChatbot';
 import { LoginPage } from './pages/LoginPage';
 import { RmDashboard } from './pages/RmDashboard';
 import { ManagerDashboard } from './pages/ManagerDashboard';
@@ -23,7 +24,7 @@ function ProtectedLayout() {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-dark)', color: 'var(--text-main)', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ width: '36px', height: '36px', border: '3px solid rgba(1, 197, 138, 0.2)', borderTopColor: 'var(--accent-rm)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-muted)' }}>Initializing FinFlow Portal...</div>
+        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-muted)' }}>Initializing SalesOrbit Portal...</div>
       </div>
     );
   }
@@ -55,6 +56,7 @@ function ProtectedLayout() {
         </main>
       </div>
       <EventSimulatorModal />
+      <SalesOrbitAIChatbot />
     </div>
   );
 }

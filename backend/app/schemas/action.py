@@ -57,6 +57,8 @@ class ActionResponse(ActionBase):
     rm_name: Optional[str] = None
     customer_name: Optional[str] = None
     lead_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 
@@ -75,6 +77,8 @@ class ScheduleItemResponse(BaseModel):
     status: str
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
     lead_id: Optional[int] = None
     lead_name: Optional[str] = None
     rm_id: int

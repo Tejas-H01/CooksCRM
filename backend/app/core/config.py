@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     WEIGHT_CUSTOMER_IMPORTANCE: float = 0.15
     WEIGHT_INTENT: float = 0.10
 
+    # SMTP Configuration
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = "tejashalvankar2006@gmail.com"
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "tejashalvankar2006@gmail.com"
+
     model_config = SettingsConfigDict(
         # Allow loading env files relative to the backend workspace
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),

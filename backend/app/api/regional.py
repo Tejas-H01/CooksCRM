@@ -200,6 +200,42 @@ def build_regional_summary(rh: User, db: Session) -> RegionalDashboardResponse:
                 "type": "MILESTONE_EXCEEDED"
             })
 
+    # Benchmarking Matrix
+    benchmarking_matrix = []
+    for b in branch_items:
+        run_rate_diff = round(b.achievement_percentage - b.expected_run_rate, 1)
+        tier = "Top Tier" if b.achievement_percentage >= 100.0 else "Above Benchmark" if run_rate_diff >= 0 else "Needs Improvement"
+        benchmarking_matrix.append({
+            "branch_id": b.branch_id,
+            "branch_name": b.branch_name,
+            "manager_name": b.manager_name,
+            "achievement_pct": b.achievement_percentage,
+            "conversion_rate": b.conversion_rate,
+            "run_rate_diff": run_rate_diff,
+            "benchmark_tier": tier
+        })
+
+    # Product Intelligence
+    prod_counts = {}
+    prod_values = {}
+    if sub_rm_ids:
+        all_regional_leads = db.query(Lead).filter(Lead.assigned_rm_id.in_(sub_rm_ids)).all()
+        for l in all_regional_leads:
+            prod = l.name or "Investment Product"
+            val = float(l.potential_value or 0.0)
+            prod_counts[prod] = prod_counts.get(prod, 0) + 1
+            prod_values[prod] = prod_values.get(prod, 0.0) + val
+
+    product_intelligence = [
+        {
+            "product_name": prod,
+            "lead_count": count,
+            "total_pipeline": round(prod_values[prod], 1),
+            "average_deal_size": round(prod_values[prod] / count, 1) if count > 0 else 0.0
+        }
+        for prod, count in prod_counts.items()
+    ]
+
     return RegionalDashboardResponse(
         regional_head_id=rh.id,
         region_name="Northern Region",
@@ -217,7 +253,9 @@ def build_regional_summary(rh: User, db: Session) -> RegionalDashboardResponse:
         risks=risks,
         high_value_opportunities=high_val_leads,
         actions=regional_actions,
-        recognition=recognition
+        recognition=recognition,
+        benchmarking_matrix=benchmarking_matrix,
+        product_intelligence=product_intelligence
     )
 
 @router.get("/regional/dashboard", response_model=RegionalDashboardResponse)

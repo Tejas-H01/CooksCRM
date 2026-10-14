@@ -715,10 +715,16 @@ export const apiService = {
   },
 
   async fetchRegionalDashboard() {
-    return {
-      regionalHeadName: "Sanjay Singhania",
-      branches: initialBranches
-    };
+    try {
+      if (apiConfig.useBackend) {
+        return await handleFetch('/regional/dashboard');
+      }
+    } catch (err) {
+      if (!err.message?.includes('401')) {
+        console.warn('FastAPI Regional Dashboard offline:', err.message);
+      }
+    }
+    return null;
   },
 
   async ingestEvent(eventPayload) {
@@ -830,5 +836,20 @@ export const apiService = {
       { id: "evt-1", event_type: "WEBSITE_VISIT", entity_type: "CUSTOMER", entity_id: "1", payload: {}, occurred_at: new Date().toISOString(), created_at: new Date().toISOString(), idempotency_key: "idemp-1" },
       { id: "evt-2", event_type: "PRODUCT_VIEW", entity_type: "CUSTOMER", entity_id: "1", payload: {}, occurred_at: new Date().toISOString(), created_at: new Date().toISOString(), idempotency_key: "idemp-2" }
     ];
+  },
+
+  async sendAIChatMessage(message) {
+    if (apiConfig.useBackend) {
+      return await handleFetch('/ai/chat', {
+        method: 'POST',
+        body: JSON.stringify({ message })
+      });
+    }
+    return {
+      message: "SalesOrbit AI offline.",
+      role: "RM",
+      tool_calls_executed: [],
+      data_context_summary: {}
+    };
   }
 };

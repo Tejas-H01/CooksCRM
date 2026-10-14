@@ -38,6 +38,12 @@ const fmt = (val, divisor = 100000, decimals = 1) => {
   return `\u20b9${(num / divisor).toFixed(decimals)}L`;
 };
 
+const fmtPct = (val) => {
+  if (val === null || val === undefined) return '--';
+  const num = parseFloat(val);
+  return isNaN(num) ? '--' : `${num.toFixed(1)}%`;
+};
+
 export const RegionalDashboard = () => {
   const { regionalDashboard, resolveRegionalAction, currentUser, eventLog } = useEventContext();
 
@@ -103,7 +109,7 @@ export const RegionalDashboard = () => {
   const recognitionList = regionalDashboard?.recognition || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div id="regional-overview" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -179,7 +185,7 @@ export const RegionalDashboard = () => {
             <Award size={16} style={{ color: 'var(--accent-regional)' }} />
           </div>
           <div className="metric-value" style={{ color: (regionalDashboard?.regional_achievement_percentage || 0) >= (regionalDashboard?.expected_run_rate || 67.74) ? 'var(--accent-rm)' : 'var(--accent-regional)' }}>
-            {regionalDashboard ? `${regionalDashboard.regional_achievement_percentage.toFixed(1)}%` : '--'}
+            {fmtPct(regionalDashboard?.regional_achievement_percentage)}
           </div>
           <div className="metric-sub" style={{ color: 'var(--text-muted)' }}>
             vs Expected Run-Rate: <strong style={{ color: 'var(--text-main)' }}>{regionalDashboard?.expected_run_rate}%</strong>
@@ -227,7 +233,7 @@ export const RegionalDashboard = () => {
       </div>
 
       {/* Target vs Achievement & Branch Comparison Charts Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '1.5rem' }}>
+      <div id="performance-trends" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '1.5rem' }}>
         
         {/* Regional Target Progress Bar */}
         <div className="glass-card">
@@ -241,7 +247,7 @@ export const RegionalDashboard = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Overall Regional Achievement</span>
                 <span style={{ fontWeight: 800, color: 'var(--text-main)' }}>
-                  {regionalDashboard ? `${regionalDashboard.regional_achievement_percentage.toFixed(1)}%` : '0%'}
+                  {fmtPct(regionalDashboard?.regional_achievement_percentage)}
                 </span>
               </div>
               <div style={{ height: '12px', background: 'var(--input-bg)', borderRadius: '6px', overflow: 'hidden' }}>
@@ -316,7 +322,7 @@ export const RegionalDashboard = () => {
       </div>
 
       {/* Branch Performance Table */}
-      <div id="branch-performance" className="glass-card">
+      <div id="teams-branches" className="glass-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <div>
             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -439,9 +445,8 @@ export const RegionalDashboard = () => {
 
       {/* Split Grid: Regional Risk & Recognition Highlights */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.6fr', gap: '1.5rem' }}>
-        
-        {/* Regional Risk & Escalations */}
-        <div className="glass-card" style={{ borderLeft: '4px solid var(--accent-regional)' }}>
+          {/* Regional Risk & Escalations */}
+        <div id="misses-risks" className="glass-card" style={{ borderLeft: '4px solid var(--accent-regional)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <ShieldAlert size={18} color="var(--accent-regional)" />
@@ -476,7 +481,7 @@ export const RegionalDashboard = () => {
         </div>
 
         {/* Regional Recognition & Highlights */}
-        <div className="glass-card" style={{ borderLeft: '4px solid var(--accent-rm)' }}>
+        <div id="recognition-feed" className="glass-card" style={{ borderLeft: '4px solid var(--accent-rm)' }}>
           <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <Award size={18} color="var(--accent-rm)" />
             <span>Regional Highlights & Recognition</span>
@@ -509,7 +514,7 @@ export const RegionalDashboard = () => {
       </div>
 
       {/* High-Value Regional Opportunities Table */}
-      <div id="regional-opportunities" className="glass-card">
+      <div id="opportunities" className="glass-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <div>
             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -577,8 +582,107 @@ export const RegionalDashboard = () => {
         </div>
       </div>
 
+      {/* Split Grid: Benchmarking Matrix & Product Intelligence */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+        
+        {/* Benchmarking Matrix */}
+        <div id="benchmarking" className="glass-card">
+          <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <TrendingUp size={18} style={{ color: 'var(--accent-regional)' }} />
+            <span>Benchmarking Matrix</span>
+          </div>
+
+          <div className="custom-table-container">
+            <table className="custom-table" style={{ fontSize: '0.8rem' }}>
+              <thead>
+                <tr>
+                  <th>Branch</th>
+                  <th>Manager</th>
+                  <th>Achievement</th>
+                  <th>Run-Rate Diff</th>
+                  <th>Tier</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(regionalDashboard?.benchmarking_matrix || []).length === 0 ? (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', padding: '1rem' }}>
+                      No benchmark data available.
+                    </td>
+                  </tr>
+                ) : (
+                  (regionalDashboard?.benchmarking_matrix || []).map((b, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 700 }}>{b.branch_name}</td>
+                      <td>{b.manager_name}</td>
+                      <td style={{ fontWeight: 800, color: b.achievement_pct >= (regionalDashboard?.expected_run_rate || 67.74) ? 'var(--accent-rm)' : 'var(--accent-regional)' }}>
+                        {b.achievement_pct}%
+                      </td>
+                      <td style={{ fontWeight: 700, color: b.run_rate_diff >= 0 ? 'var(--accent-rm)' : 'var(--accent-regional)' }}>
+                        {b.run_rate_diff >= 0 ? `+${b.run_rate_diff}%` : `${b.run_rate_diff}%`}
+                      </td>
+                      <td>
+                        <span style={{
+                          fontSize: '0.7rem',
+                          padding: '0.15rem 0.45rem',
+                          borderRadius: '4px',
+                          fontWeight: 700,
+                          background: b.benchmark_tier === 'Top Tier' ? 'rgba(1, 197, 138, 0.15)' : 'rgba(245, 166, 35, 0.15)',
+                          color: b.benchmark_tier === 'Top Tier' ? 'var(--accent-rm)' : '#f5a623'
+                        }}>
+                          {b.benchmark_tier}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Product Intelligence */}
+        <div id="product-intelligence" className="glass-card">
+          <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Layers size={18} style={{ color: 'var(--accent-regional)' }} />
+            <span>Product Intelligence Breakdown</span>
+          </div>
+
+          <div className="custom-table-container">
+            <table className="custom-table" style={{ fontSize: '0.8rem' }}>
+              <thead>
+                <tr>
+                  <th>Product / Offer</th>
+                  <th>Leads</th>
+                  <th>Total Pipeline</th>
+                  <th>Avg Deal Size</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(regionalDashboard?.product_intelligence || []).length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', padding: '1rem' }}>
+                      No product pipeline breakdown available.
+                    </td>
+                  </tr>
+                ) : (
+                  (regionalDashboard?.product_intelligence || []).map((p, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 700 }}>{p.product_name}</td>
+                      <td>{p.lead_count} leads</td>
+                      <td style={{ fontWeight: 800, color: 'var(--accent-rm)' }}>{fmt(p.total_pipeline)}</td>
+                      <td style={{ fontWeight: 700 }}>{fmt(p.average_deal_size)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       {/* Regional Action Center */}
-      <div id="regional-actions" className="glass-card">
+      <div id="action-center" className="glass-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <div>
             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

@@ -384,7 +384,7 @@ export const UserHierarchyPage = () => {
                   <input
                     type="email"
                     required
-                    placeholder="e.g. sanjay@finflow.com"
+                    placeholder="e.g. sanjay@salesorbit.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', background: 'var(--input-bg)', border: '1px solid var(--border-glass)', color: 'var(--text-main)' }}

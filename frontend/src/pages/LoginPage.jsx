@@ -151,7 +151,7 @@ export const LoginPage = () => {
           </div>
 
           <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.03em' }}>
-            FINFLOW
+            SalesOrbit
           </h1>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.2rem', fontWeight: 500 }}>
             Operational Sales Intelligence CRM

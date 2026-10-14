@@ -72,6 +72,32 @@ async def complete_action(
     _check_action_access(action, current_user)
     
     outcome = req.outcome if req else None
+
+    # Handle real SMTP email execution if action_type is EMAIL or send_email flag is set
+    if outcome and isinstance(outcome, dict):
+        act_type = str(outcome.get("action_type", "")).upper()
+        if act_type == "EMAIL" or outcome.get("send_email") is True:
+            recipient_email = outcome.get("to_email") or outcome.get("recipient_email") or action.customer_email
+            if not recipient_email or not recipient_email.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Recipient email address is missing. Cannot send SMTP email."
+                )
+            
+            subject = outcome.get("subject") or f"SalesOrbit Follow-up: {action.lead_name or action.customer_name or 'Customer'}"
+            body = outcome.get("notes") or outcome.get("body") or action.description or "Following up on our recent communication."
+            
+            try:
+                from app.services.email_service import EmailService
+                EmailService.send_smtp_email(to_email=recipient_email, subject=subject, body=body)
+                outcome["smtp_status"] = "SENT"
+                outcome["recipient_email"] = recipient_email
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"SMTP Email Delivery Failed: {str(e)}"
+                )
+
     action = ActionService.complete_action(db, action_id, outcome=outcome)
     
     import uuid

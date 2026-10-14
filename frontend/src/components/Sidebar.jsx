@@ -59,7 +59,7 @@ export const Sidebar = () => {
             <Zap size={20} />
           </div>
           <div>
-            <span>FINFLOW</span>
+            <span>SalesOrbit</span>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.5px' }}>
               {currentWorkspace.title}
             </div>

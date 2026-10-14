@@ -1,19 +1,22 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useEventContext } from '../context/EventContext';
-import { Search, Bell, Sun, Moon, LogOut } from 'lucide-react';
+import { Bell, Sun, Moon, LogOut } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 
 export const Header = () => {
-  const { eventLog, theme, toggleTheme } = useEventContext();
+  const { eventLog, theme, toggleTheme, leads = [], actions = [] } = useEventContext();
   const { logout, currentUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
+
   const currentRoute = location.pathname;
   const isAdminView = currentRoute.startsWith('/admin');
   const isRegionalView = currentRoute.startsWith('/regional');
+
+
 
   const handleLogout = () => {
     logout();
@@ -41,32 +44,7 @@ export const Header = () => {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-        {/* Quick Search */}
-        <div
-          style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            background: 'var(--input-bg)',
-            border: '1px solid var(--border-glass)',
-            borderRadius: '8px',
-            padding: '0.35rem 0.75rem'
-          }}
-        >
-          <Search size={16} style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }} />
-          <input
-            type="text"
-            placeholder="Search leads, events..."
-            style={{
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: 'var(--text-main)',
-              fontSize: '0.82rem',
-              width: '150px'
-            }}
-          />
-        </div>
+
 
         {/* Dark / Light Theme Toggle Button */}
         <button

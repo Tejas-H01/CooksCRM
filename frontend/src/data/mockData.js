@@ -98,7 +98,7 @@ export const initialIntegrations = [
     latencyMs: 142,
     successRate: 99.8,
     lastSync: "2 mins ago",
-    endpoint: "https://api.finflow.com/v1/webhooks/payments"
+    endpoint: "https://api.salesorbit.com/v1/webhooks/payments"
   },
   {
     id: "int-2",
@@ -109,7 +109,7 @@ export const initialIntegrations = [
     latencyMs: 88,
     successRate: 99.9,
     lastSync: "1 min ago",
-    endpoint: "https://core-banking.internal.finflow/v2/accounts"
+    endpoint: "https://core-banking.internal.salesorbit/v2/accounts"
   },
   {
     id: "int-3",
@@ -131,7 +131,7 @@ export const initialIntegrations = [
     latencyMs: 65,
     successRate: 100,
     lastSync: "Just now",
-    endpoint: "https://analytics.finflow.com/v1/events"
+    endpoint: "https://analytics.salesorbit.com/v1/events"
   },
   {
     id: "int-5",
@@ -308,11 +308,11 @@ export const initialBranches = [
 ];
 
 export const initialUsers = [
-  { id: "usr-1", name: "Rahul Sharma", email: "rahul.sharma@finflow.com", role: "RM", team: "North Team", branchName: "Mumbai Central", regionName: "West Region", managerName: "Anita Verma", status: "Active", is_active: true, lastActive: "10:24 AM" },
-  { id: "usr-2", name: "Neha Iyer", email: "neha.iyer@finflow.com", role: "RM", team: "West Team", branchName: "Mumbai Central", regionName: "West Region", managerName: "Anita Verma", status: "Active", is_active: true, lastActive: "09:15 AM" },
-  { id: "usr-3", name: "Anita Verma", email: "anita.verma@finflow.com", role: "BRANCH_MANAGER", team: "North Team", branchName: "Mumbai Central", regionName: "West Region", managerName: "Sanjay Singhania", status: "Active", is_active: true, lastActive: "10:30 AM" },
-  { id: "usr-4", name: "Sanjay Singhania", email: "sanjay.s@finflow.com", role: "REGIONAL_HEAD", team: "West Region", branchName: "All Branches", regionName: "West Region", managerName: "N/A", status: "Active", is_active: true, lastActive: "11:00 AM" },
-  { id: "usr-5", name: "System Admin", email: "admin@finflow.com", role: "ADMIN", team: "System Admin", branchName: "Headquarters", regionName: "All Regions", managerName: "N/A", status: "Active", is_active: true, lastActive: "10:45 AM" }
+  { id: "usr-1", name: "Rahul Sharma", email: "rahul.sharma@salesorbit.com", role: "RM", team: "North Team", branchName: "Mumbai Central", regionName: "West Region", managerName: "Anita Verma", status: "Active", is_active: true, lastActive: "10:24 AM" },
+  { id: "usr-2", name: "Neha Iyer", email: "neha.iyer@salesorbit.com", role: "RM", team: "West Team", branchName: "Mumbai Central", regionName: "West Region", managerName: "Anita Verma", status: "Active", is_active: true, lastActive: "09:15 AM" },
+  { id: "usr-3", name: "Anita Verma", email: "anita.verma@salesorbit.com", role: "BRANCH_MANAGER", team: "North Team", branchName: "Mumbai Central", regionName: "West Region", managerName: "Sanjay Singhania", status: "Active", is_active: true, lastActive: "10:30 AM" },
+  { id: "usr-4", name: "Sanjay Singhania", email: "sanjay.s@salesorbit.com", role: "REGIONAL_HEAD", team: "West Region", branchName: "All Branches", regionName: "West Region", managerName: "N/A", status: "Active", is_active: true, lastActive: "11:00 AM" },
+  { id: "usr-5", name: "System Admin", email: "admin@salesorbit.com", role: "ADMIN", team: "System Admin", branchName: "Headquarters", regionName: "All Regions", managerName: "N/A", status: "Active", is_active: true, lastActive: "10:45 AM" }
 ];
 
 export const initialAuditLogs = [

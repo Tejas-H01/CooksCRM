@@ -160,6 +160,22 @@ class Action(Base):
     def lead_name(self) -> Optional[str]:
         return self.lead.name if self.lead else None
 
+    @property
+    def customer_email(self) -> Optional[str]:
+        if self.customer and self.customer.email:
+            return self.customer.email
+        if self.lead and self.lead.email:
+            return self.lead.email
+        return None
+
+    @property
+    def customer_phone(self) -> Optional[str]:
+        if self.customer and self.customer.phone:
+            return self.customer.phone
+        if self.lead and self.lead.phone:
+            return self.lead.phone
+        return None
+
 
 class Target(Base):
     __tablename__ = "targets"

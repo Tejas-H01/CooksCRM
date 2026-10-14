@@ -37,7 +37,7 @@ export const EventProvider = ({ children }) => {
 
   // Role Theme State - Dynamic Initialization from Token to prevent early defaults
   const [activeRole, setActiveRole] = useState(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('finflow_access_token') || localStorage.getItem('token');
     if (token) {
       const decoded = parseJwt(token);
       const role = decoded?.role;
@@ -77,6 +77,17 @@ export const EventProvider = ({ children }) => {
   const [selectedLead, setSelectedLead] = useState(null);
   const [eventLog, setEventLog] = useState([]);
   const [simulatorStats, setSimulatorStats] = useState({ is_simulator_running: false, queue_depth: 0, active_processing: 0, processed_count: 0, failed_count: 0, total_queued: 0 });
+
+  // Sync activeRole with currentUser role
+  useEffect(() => {
+    if (currentUser?.role) {
+      const r = currentUser.role;
+      if (r === 'RM') setActiveRole('rm');
+      else if (r === 'BRANCH_MANAGER') setActiveRole('manager');
+      else if (r === 'REGIONAL_HEAD') setActiveRole('regional');
+      else if (r === 'ADMIN') setActiveRole('admin');
+    }
+  }, [currentUser]);
 
   // Apply Theme attribute to document element
   useEffect(() => {
@@ -199,7 +210,7 @@ export const EventProvider = ({ children }) => {
     try {
       // Backend expects outcome as a Dict (or null), not a string
       const outcomePayload = typeof outcome === 'string' ? { notes: outcome } : (outcome || {});
-      await apiService.completeAction(actionId, { outcome: outcomePayload });
+      const res = await apiService.completeAction(actionId, { outcome: outcomePayload });
       setActions((prev) => prev.filter((a) => a.id !== actionId));
       setSchedule((prev) => prev.filter((s) => s.id !== actionId));
       
@@ -215,15 +226,17 @@ export const EventProvider = ({ children }) => {
       ]);
 
       showToast(`✅ Action #${actionId} marked completed & logged to audit trail!`, 'success');
+      return res;
     } catch (err) {
       showToast(`❌ Failed to complete action: ${err.message}`, 'error');
+      throw err;
     }
   };
 
   // Action snooze handler
   const snoozeAction = async (actionId, hours) => {
     try {
-      await apiService.snoozeAction(actionId, hours * 60);
+      const res = await apiService.snoozeAction(actionId, hours * 60);
       setActions((prev) =>
         prev.map((a) =>
           a.id === actionId
@@ -234,8 +247,10 @@ export const EventProvider = ({ children }) => {
       const updatedSch = await apiService.fetchRmSchedule();
       if (Array.isArray(updatedSch)) setSchedule(updatedSch);
       showToast(`⏰ Action #${actionId} snoozed for ${hours} hours.`, 'info');
+      return res;
     } catch (err) {
       showToast(`❌ Failed to snooze action: ${err.message}`, 'error');
+      throw err;
     }
   };
 

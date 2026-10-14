@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useEventContext } from '../context/EventContext';
 import { apiService } from '../services/api';
-import { 
-  TrendingUp, 
-  Clock, 
-  Send, 
-  Calendar, 
-  Sparkles, 
+import {
+  TrendingUp,
+  Clock,
+  Send,
+  Calendar,
+  Sparkles,
   ArrowRight,
   Target,
   ChevronDown,
@@ -16,7 +16,10 @@ import {
   Check,
   X,
   Lightbulb,
-  Cpu
+  Cpu,
+  PhoneCall,
+  Mail,
+  FileText
 } from 'lucide-react';
 
 const fmt = (val, divisor = 100000, decimals = 1) => {
@@ -32,15 +35,15 @@ const fmtPct = (val, decimals = 1) => {
 };
 
 export const RmDashboard = () => {
-  const { 
-    actions, 
-    leads, 
-    schedule, 
-    completeAction, 
-    snoozeAction, 
-    reassignAction, 
-    selectedLead, 
-    setSelectedLead, 
+  const {
+    actions,
+    leads,
+    schedule,
+    completeAction,
+    snoozeAction,
+    reassignAction,
+    selectedLead,
+    setSelectedLead,
     rmPerformance,
     opportunitySuggestions,
     customers,
@@ -55,6 +58,16 @@ export const RmDashboard = () => {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [activeActionForDetail, setActiveActionForDetail] = useState(null);
   const [showOpportunities, setShowOpportunities] = useState(true);
+
+  // Enhanced Action Modal state
+  const [actionMode, setActionMode] = useState('EMAIL'); // 'CALL' | 'EMAIL' | 'NOTE' | 'SNOOZE' | 'COMPLETE'
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [callNotes, setCallNotes] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [noteText, setNoteText] = useState('');
+  const [snoozeHours, setSnoozeHours] = useState(24);
+  const [completeNotes, setCompleteNotes] = useState('');
+  const [isSubmittingModalAction, setIsSubmittingModalAction] = useState(false);
 
   // Add Opportunity Modal state
   const [isAddOppModalOpen, setIsAddOppModalOpen] = useState(false);
@@ -212,8 +225,74 @@ export const RmDashboard = () => {
     const leadObj = leads.find((l) => l.id === act.lead_id || l.name === act.leadName || l.name === act.lead_name || l.name === act.customer_name) || leads[0];
     if (!leadObj) return;
     setSelectedLead(leadObj);
+    setActionMode('EMAIL');
+    setRecipientEmail(act.customer_email || leadObj.email || leadObj.customer_email || '');
+    setEmailSubject(`Follow-up: ${leadObj.name}`);
     setEditableMsg(act.suggestedMessage || act.description || `Hi ${leadObj.name}, following up on our recent communication.`);
+    setCallNotes('');
+    setNoteText('');
+    setSnoozeHours(24);
+    setCompleteNotes('');
     setIsDetailOpen(true);
+  };
+
+  const handleModalActionSubmit = async () => {
+    if (!activeActionForDetail) return;
+    setIsSubmittingModalAction(true);
+    try {
+      if (actionMode === 'CALL') {
+        const resolvedPhone = activeActionForDetail?.customer_phone || selectedLead?.phone || selectedLead?.customer_phone;
+        if (!resolvedPhone) {
+          showToast('❌ Customer phone number is not available in database.', 'error');
+          setIsSubmittingModalAction(false);
+          return;
+        }
+        // Trigger browser tel: protocol action
+        window.location.href = `tel:${resolvedPhone}`;
+
+        await completeAction(activeActionForDetail.id, {
+          action_type: 'CALL',
+          notes: callNotes || 'Outbound call completed',
+          phone: resolvedPhone,
+          customer_id: selectedLead?.customer_id
+        });
+      } else if (actionMode === 'EMAIL') {
+        const targetEmail = recipientEmail ? recipientEmail.trim() : (activeActionForDetail?.customer_email || selectedLead?.email || selectedLead?.customer_email || '');
+        if (!targetEmail) {
+          showToast('❌ Recipient email address is required. Please enter an email.', 'error');
+          setIsSubmittingModalAction(false);
+          return;
+        }
+
+        await completeAction(activeActionForDetail.id, {
+          action_type: 'EMAIL',
+          send_email: true,
+          to_email: targetEmail,
+          recipient_email: targetEmail,
+          subject: emailSubject || `Follow-up: ${selectedLead?.name}`,
+          notes: editableMsg || 'Email follow-up completed',
+          customer_id: selectedLead?.customer_id
+        });
+      } else if (actionMode === 'NOTE') {
+        await completeAction(activeActionForDetail.id, {
+          action_type: 'NOTE',
+          notes: noteText || 'Action note saved',
+          customer_id: selectedLead?.customer_id
+        });
+      } else if (actionMode === 'SNOOZE') {
+        await snoozeAction(activeActionForDetail.id, snoozeHours);
+      } else if (actionMode === 'COMPLETE') {
+        await completeAction(activeActionForDetail.id, {
+          notes: completeNotes || 'Action completed',
+          customer_id: selectedLead?.customer_id
+        });
+      }
+      setIsDetailOpen(false);
+    } catch (err) {
+      console.error("Action submit failed:", err);
+    } finally {
+      setIsSubmittingModalAction(false);
+    }
   };
 
   const aiInsightText = (() => {
@@ -438,7 +517,7 @@ export const RmDashboard = () => {
           <div id="ai-section" className="ai-insight-box">
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-rm)', fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.35rem' }}>
-                <Sparkles size={18} /><span>AI Insight</span>
+                <Sparkles size={18} /><span>Quick Start</span>
               </div>
               <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', lineHeight: 1.45, fontWeight: 500 }}>{aiInsightText}</div>
               <button onClick={() => { if (actions.length > 0) openActionDetail(actions[0]); }} style={{ marginTop: '0.85rem', background: 'var(--accent-rm)', border: 'none', color: '#fff', borderRadius: '6px', padding: '0.45rem 0.95rem', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>Start My Day</button>
@@ -540,18 +619,199 @@ export const RmDashboard = () => {
             </div>
 
             <div style={{ background: 'rgba(1, 154, 107, 0.08)', border: '1px solid rgba(1, 154, 107, 0.3)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--accent-rm)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '0.35rem' }}>Recommended Action</div>
-              <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>{activeActionForDetail.title || `Follow up with ${selectedLead.name} today`}</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.85rem' }}>Best time to contact: <strong style={{ color: 'var(--text-main)' }}>{selectedLead.bestContactTime || 'Afternoon'}</strong></div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>Outbound Communication Template</label>
-                <textarea rows={3} value={editableMsg} onChange={(e) => setEditableMsg(e.target.value)} style={{ width: '100%', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', borderRadius: '8px', padding: '0.75rem', color: 'var(--text-main)', fontSize: '0.85rem' }} />
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--accent-rm)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '0.35rem' }}>Action Execution Queue</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.2rem' }}>{activeActionForDetail.title || `Follow up with ${selectedLead.name} today`}</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Scheduled Due Time: <strong style={{ color: 'var(--text-main)' }}>{activeActionForDetail.due_at ? new Date(activeActionForDetail.due_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Scheduled Today'}</strong></div>
+
+              {/* ACTION MODE SELECTOR TABS */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setActionMode('CALL')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.45rem 0.85rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700,
+                    background: actionMode === 'CALL' ? 'rgba(1, 197, 138, 0.2)' : 'var(--input-bg)',
+                    color: actionMode === 'CALL' ? 'var(--accent-rm)' : 'var(--text-muted)',
+                    border: actionMode === 'CALL' ? '1px solid var(--accent-rm)' : '1px solid var(--border-glass-hover)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <PhoneCall size={14} /> <span>CALL</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActionMode('EMAIL')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.45rem 0.85rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700,
+                    background: actionMode === 'EMAIL' ? 'rgba(62, 164, 245, 0.2)' : 'var(--input-bg)',
+                    color: actionMode === 'EMAIL' ? '#3ea4f5' : 'var(--text-muted)',
+                    border: actionMode === 'EMAIL' ? '1px solid #3ea4f5' : '1px solid var(--border-glass-hover)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Mail size={14} /> <span>EMAIL</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActionMode('NOTE')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.45rem 0.85rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700,
+                    background: actionMode === 'NOTE' ? 'rgba(245, 166, 35, 0.2)' : 'var(--input-bg)',
+                    color: actionMode === 'NOTE' ? '#f5a623' : 'var(--text-muted)',
+                    border: actionMode === 'NOTE' ? '1px solid #f5a623' : '1px solid var(--border-glass-hover)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <FileText size={14} /> <span>NOTE</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActionMode('SNOOZE')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.45rem 0.85rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700,
+                    background: actionMode === 'SNOOZE' ? 'rgba(168, 85, 247, 0.2)' : 'var(--input-bg)',
+                    color: actionMode === 'SNOOZE' ? '#a855f7' : 'var(--text-muted)',
+                    border: actionMode === 'SNOOZE' ? '1px solid #a855f7' : '1px solid var(--border-glass-hover)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Clock size={14} /> <span>SNOOZE</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActionMode('COMPLETE')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.45rem 0.85rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700,
+                    background: actionMode === 'COMPLETE' ? 'rgba(1, 197, 138, 0.2)' : 'var(--input-bg)',
+                    color: actionMode === 'COMPLETE' ? 'var(--accent-rm)' : 'var(--text-muted)',
+                    border: actionMode === 'COMPLETE' ? '1px solid var(--accent-rm)' : '1px solid var(--border-glass-hover)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <CheckCircle size={14} /> <span>COMPLETE</span>
+                </button>
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <button onClick={() => { completeAction(activeActionForDetail.id, { notes: editableMsg || 'Follow-up completed' }); setIsDetailOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--accent-rm)', border: 'none', color: '#fff', fontWeight: 700, borderRadius: '8px', padding: '0.55rem 1.1rem', fontSize: '0.82rem', cursor: 'pointer' }}><Send size={15} /><span>Send Now and Complete</span></button>
-                <button onClick={() => { snoozeAction(activeActionForDetail.id, 24); setIsDetailOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', color: 'var(--text-main)', fontWeight: 600, borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.82rem', cursor: 'pointer' }}><Clock size={15} /><span>Snooze (24h)</span></button>
-                <button onClick={() => { reassignAction(activeActionForDetail.id, 'Neha Iyer'); setIsDetailOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', color: 'var(--text-main)', fontWeight: 600, borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.82rem', cursor: 'pointer' }}><span>Reassign to Neha</span></button>
-              </div>
+
+              {/* ACTION MODE SPECIFIC FLOWS */}
+              {actionMode === 'CALL' && (
+                <div>
+                  <div style={{ fontSize: '0.82rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <div>Assigned RM: <strong style={{ color: 'var(--text-main)' }}>{currentUser?.username || 'rm_alice'}</strong></div>
+                    <div>Customer Contact: <strong style={{ color: 'var(--text-main)' }}>{selectedLead.name}</strong></div>
+                    <div>
+                      Phone Number:{' '}
+                      {(activeActionForDetail?.customer_phone || selectedLead?.phone || selectedLead?.customer_phone) ? (
+                        <strong style={{ color: 'var(--accent-rm)' }}>
+                          {activeActionForDetail?.customer_phone || selectedLead?.phone || selectedLead?.customer_phone}
+                        </strong>
+                      ) : (
+                        <span style={{ color: 'var(--accent-regional)', fontWeight: 600 }}>❌ Not Available in Database</span>
+                      )}
+                    </div>
+                  </div>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>Call Outcome Notes / Discussion Summary</label>
+                  <textarea rows={3} placeholder="Record customer conversation summary..." value={callNotes} onChange={(e) => setCallNotes(e.target.value)} style={{ width: '100%', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', borderRadius: '8px', padding: '0.75rem', color: 'var(--text-main)', fontSize: '0.85rem' }} />
+                  <button onClick={handleModalActionSubmit} disabled={isSubmittingModalAction} style={{ marginTop: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--accent-rm)', border: 'none', color: '#fff', fontWeight: 700, borderRadius: '8px', padding: '0.55rem 1.1rem', fontSize: '0.82rem', cursor: 'pointer', opacity: isSubmittingModalAction ? 0.6 : 1 }}>
+                    <PhoneCall size={15} /><span>{isSubmittingModalAction ? 'Initiating Call...' : 'Call Customer & Complete (tel:)'}</span>
+                  </button>
+                </div>
+              )}
+
+              {actionMode === 'EMAIL' && (
+                <div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>To (Recipient Customer Email)</label>
+                    <input
+                      type="email"
+                      placeholder="Enter customer email address..."
+                      value={recipientEmail}
+                      onChange={(e) => setRecipientEmail(e.target.value)}
+                      style={{
+                        width: '100%',
+                        background: 'var(--input-bg)',
+                        border: '1px solid var(--border-glass-hover)',
+                        color: 'var(--accent-rm)',
+                        fontWeight: 700,
+                        borderRadius: '8px',
+                        padding: '0.55rem 0.75rem',
+                        fontSize: '0.85rem'
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>Subject</label>
+                    <input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} style={{ width: '100%', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-main)', fontSize: '0.85rem' }} />
+                  </div>
+                  <div style={{ marginBottom: '0.85rem' }}>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>Message Body</label>
+                    <textarea rows={3} value={editableMsg} onChange={(e) => setEditableMsg(e.target.value)} style={{ width: '100%', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', borderRadius: '8px', padding: '0.75rem', color: 'var(--text-main)', fontSize: '0.85rem' }} />
+                  </div>
+                  <button onClick={handleModalActionSubmit} disabled={isSubmittingModalAction} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#3ea4f5', border: 'none', color: '#fff', fontWeight: 700, borderRadius: '8px', padding: '0.55rem 1.1rem', fontSize: '0.82rem', cursor: 'pointer', opacity: isSubmittingModalAction ? 0.6 : 1 }}>
+                    <Mail size={15} /><span>{isSubmittingModalAction ? 'Sending Email via SMTP...' : 'Send Email & Complete'}</span>
+                  </button>
+                </div>
+              )}
+
+              {actionMode === 'NOTE' && (
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>Action Note / Internal Log</label>
+                  <textarea rows={3} placeholder="Enter note regarding this lead or opportunity..." value={noteText} onChange={(e) => setNoteText(e.target.value)} style={{ width: '100%', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', borderRadius: '8px', padding: '0.75rem', color: 'var(--text-main)', fontSize: '0.85rem' }} />
+                  <button onClick={handleModalActionSubmit} disabled={isSubmittingModalAction} style={{ marginTop: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#f5a623', border: 'none', color: '#fff', fontWeight: 700, borderRadius: '8px', padding: '0.55rem 1.1rem', fontSize: '0.82rem', cursor: 'pointer', opacity: isSubmittingModalAction ? 0.6 : 1 }}>
+                    <FileText size={15} /><span>{isSubmittingModalAction ? 'Saving Note...' : 'Save Note & Complete'}</span>
+                  </button>
+                </div>
+              )}
+
+              {actionMode === 'SNOOZE' && (
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Select Snooze Duration</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                    {[
+                      { label: '1 Hour', hours: 1 },
+                      { label: '4 Hours', hours: 4 },
+                      { label: '24 Hours', hours: 24 },
+                      { label: '48 Hours', hours: 48 }
+                    ].map((d) => (
+                      <button
+                        key={d.hours}
+                        type="button"
+                        onClick={() => setSnoozeHours(d.hours)}
+                        style={{
+                          padding: '0.4rem 0.75rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 600,
+                          background: snoozeHours === d.hours ? 'rgba(168, 85, 247, 0.25)' : 'var(--input-bg)',
+                          border: snoozeHours === d.hours ? '1px solid #a855f7' : '1px solid var(--border-glass)',
+                          color: snoozeHours === d.hours ? '#a855f7' : 'var(--text-main)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={handleModalActionSubmit} disabled={isSubmittingModalAction} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#a855f7', border: 'none', color: '#fff', fontWeight: 700, borderRadius: '8px', padding: '0.55rem 1.1rem', fontSize: '0.82rem', cursor: 'pointer', opacity: isSubmittingModalAction ? 0.6 : 1 }}>
+                    <Clock size={15} /><span>{isSubmittingModalAction ? 'Snoozing...' : `Snooze Action (${snoozeHours}h)`}</span>
+                  </button>
+                </div>
+              )}
+
+              {actionMode === 'COMPLETE' && (
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>Completion Summary (Optional)</label>
+                  <textarea rows={3} placeholder="Enter completion outcome..." value={completeNotes} onChange={(e) => setCompleteNotes(e.target.value)} style={{ width: '100%', background: 'var(--input-bg)', border: '1px solid var(--border-glass-hover)', borderRadius: '8px', padding: '0.75rem', color: 'var(--text-main)', fontSize: '0.85rem' }} />
+                  <button onClick={handleModalActionSubmit} disabled={isSubmittingModalAction} style={{ marginTop: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--accent-rm)', border: 'none', color: '#fff', fontWeight: 700, borderRadius: '8px', padding: '0.55rem 1.1rem', fontSize: '0.82rem', cursor: 'pointer', opacity: isSubmittingModalAction ? 0.6 : 1 }}>
+                    <CheckCircle size={15} /><span>{isSubmittingModalAction ? 'Completing...' : 'Mark Action Complete'}</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -561,7 +821,9 @@ export const RmDashboard = () => {
               </div>
               <div style={{ background: 'var(--input-bg)', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Next Follow-up SLA</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent-manager)', marginTop: '0.2rem' }}>{selectedLead.nextFollowup || 'Tomorrow'}</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent-manager)', marginTop: '0.2rem' }}>
+                  {activeActionForDetail.due_at ? new Date(activeActionForDetail.due_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Active SLA'}
+                </div>
               </div>
             </div>
           </div>
